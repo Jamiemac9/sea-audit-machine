@@ -108,7 +108,7 @@ function ContextSelects() {
     useWorkbench()
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
       <Select
         value={clientId}
         onValueChange={(value) => {
@@ -116,7 +116,7 @@ function ContextSelects() {
         }}
       >
         <SelectTrigger
-          className="w-full bg-background sm:w-60"
+          className="w-full min-w-0 bg-background sm:w-60"
           aria-label="Active client"
         >
           <SelectValue />
@@ -136,7 +136,7 @@ function ContextSelects() {
         }}
       >
         <SelectTrigger
-          className="w-full bg-background sm:w-48"
+          className="w-full min-w-0 bg-background sm:w-48"
           aria-label="Active scheme"
         >
           <SelectValue />
@@ -198,8 +198,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </p>
               </div>
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
               <ContextSelects />
+              <div className="flex items-center justify-between gap-2 sm:justify-start">
               <div
                 className={cn(
                   "inline-flex h-8 items-center gap-2 rounded-full px-3 text-xs font-medium ring-1 ring-inset",
@@ -252,6 +253,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
+              </div>
             </div>
           </div>
         </header>
