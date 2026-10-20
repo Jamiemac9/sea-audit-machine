@@ -575,95 +575,188 @@ export const issuedReports: IssuedReport[] = [
   },
 ]
 
-export const rubricDomains = [
+export const RUBRIC_SCORES = ["Pass", "Partial", "Fail", "N/A"] as const
+
+export type RubricScore = (typeof RUBRIC_SCORES)[number]
+
+export type RubricPillar = {
+  id: string
+  title: string
+  summary: string
+}
+
+export type RubricItem = {
+  id: string
+  pillarId: string
+  title: string
+  question: string
+  weight: number
+}
+
+export type RubricMark = {
+  itemId: string
+  clientId: string
+  schemeId: string
+  score: RubricScore | null
+  note: string
+}
+
+export const RUBRIC_WEIGHTS = [1, 2, 3, 4, 5] as const
+
+export function rubricWeightLabel(weight: number) {
+  if (weight <= 1) return "Low"
+  if (weight === 2) return "Limited"
+  if (weight === 3) return "Standard"
+  if (weight === 4) return "High"
+  return "Critical"
+}
+
+export const rubricPillars: RubricPillar[] = [
   {
-    id: "fire",
-    name: "Fire safety",
-    basis: "Regulatory Reform (Fire Safety) Order 2005 and the Building Safety Act 2022",
-    criteria: [
-      {
-        name: "Current fire risk assessment",
-        evidence: "Assessment in date, with a named responsible person and an action log.",
-        weight: "High",
-      },
-      {
-        name: "Fire door condition",
-        evidence: "Survey schedule, closer certificates, and remedial completion dates.",
-        weight: "High",
-      },
-    ],
+    id: "deadlines",
+    title: "Statutory Deadlines & Licensing Readiness",
+    summary:
+      "Needs assessments, statutory support reviews, and the registered statement of purpose.",
   },
   {
-    id: "gas",
-    name: "Gas safety",
-    basis: "Gas Safety (Installation and Use) Regulations 1998",
-    criteria: [
-      {
-        name: "Annual safety checks",
-        evidence: "Landlord gas safety records within 12 months for the sampled homes.",
-        weight: "High",
-      },
-      {
-        name: "No-access process",
-        evidence: "Recorded appointments, legal warnings, and capped supplies where required.",
-        weight: "Medium",
-      },
-    ],
+    id: "golden-thread",
+    title: 'The "Golden Thread" (Needs -> Plan -> Risk)',
+    summary:
+      "Traceability from assessed need to the support plan, and from risk to a dated control.",
   },
   {
-    id: "water",
-    name: "Water hygiene",
-    basis: "HSE Approved Code of Practice L8 and HSG274",
-    criteria: [
-      {
-        name: "Legionella risk assessment",
-        evidence: "Scheme assessment reviewed within the provider's stated cycle.",
-        weight: "High",
-      },
-      {
-        name: "Temperature monitoring",
-        evidence: "Sentinel outlet logs with out-of-range results acted on.",
-        weight: "High",
-      },
-    ],
+    id: "session-notes",
+    title: 'Housing Benefit & Session Note Quality ("More Than Minimal" Support)',
+    summary:
+      "Notes that show active support, exempt-accommodation eligibility, and an unbroken chronology.",
   },
   {
-    id: "electrical",
-    name: "Electrical safety",
-    basis: "BS 7671 electrical installation condition reporting",
-    criteria: [
-      {
-        name: "In-date condition reports",
-        evidence: "EICR for communal systems, with C1 and C2 observations cleared.",
-        weight: "High",
-      },
-    ],
+    id: "safeguarding",
+    title: "Safeguarding & Managing Agent Oversight",
+    summary:
+      "Integrity of the safeguarding record and oversight of third-party managing agents.",
+  },
+]
+
+export const seedRubricItems: RubricItem[] = [
+  {
+    id: "needs-window",
+    pillarId: "deadlines",
+    title: "4-Week Needs Assessment Window",
+    question: "Completed within 28 days of tenancy start?",
+    weight: 5,
   },
   {
-    id: "asbestos",
-    name: "Asbestos",
-    basis: "Control of Asbestos Regulations 2012",
-    criteria: [
-      {
-        name: "Register and re-inspection",
-        evidence: "Accessible register and re-inspection dates for known materials.",
-        weight: "Medium",
-      },
-    ],
+    id: "statutory-reviews",
+    pillarId: "deadlines",
+    title: "Timely Statutory Reviews",
+    question:
+      "3-month, 6-month, and 9-month support reviews present and signed?",
+    weight: 5,
   },
   {
-    id: "lifts",
-    name: "Lifting equipment",
-    basis: "Lifting Operations and Lifting Equipment Regulations 1998",
-    criteria: [
-      {
-        name: "Thorough examination",
-        evidence: "Examination reports within the required interval and defects closed.",
-        weight: "High",
-      },
-    ],
+    id: "statement-purpose",
+    pillarId: "deadlines",
+    title: "Statement of Purpose Alignment",
+    question: "Does the scheme operation match the registered model?",
+    weight: 4,
   },
-] as const
+  {
+    id: "needs-plan",
+    pillarId: "golden-thread",
+    title: "Needs-to-Plan Traceability",
+    question:
+      "Every identified need in the assessment has a corresponding active goal in the support plan?",
+    weight: 5,
+  },
+  {
+    id: "risk-control",
+    pillarId: "golden-thread",
+    title: "Risk-to-Control Mitigation",
+    question:
+      "Every identified risk—e.g., safeguarding, fire, self-neglect—has an active, dated control measure in the Risk Management Plan?",
+    weight: 5,
+  },
+  {
+    id: "closed-loop",
+    pillarId: "golden-thread",
+    title: "Closed-Loop Updates",
+    question:
+      "Were risks and support plans updated following critical incidents or changes in circumstance?",
+    weight: 4,
+  },
+  {
+    id: "progression",
+    pillarId: "session-notes",
+    title: "Active Progression Evidence",
+    question:
+      'Session notes evidence active support/skill-building rather than passive "welfare check" corridor chats?',
+    weight: 5,
+  },
+  {
+    id: "hb-compliance",
+    pillarId: "session-notes",
+    title: "Housing Benefit Compliance",
+    question:
+      "Notes explicitly support exempt accommodation criteria and service charge eligibility?",
+    weight: 5,
+  },
+  {
+    id: "chronology",
+    pillarId: "session-notes",
+    title: "Consistent Chronology",
+    question:
+      "Session notes are logged chronologically without unexplained multi-week gaps?",
+    weight: 3,
+  },
+  {
+    id: "safeguarding-log",
+    pillarId: "safeguarding",
+    title: "Safeguarding Log Integrity",
+    question:
+      "All disclosures, concerns, and actions properly recorded and escalated?",
+    weight: 5,
+  },
+  {
+    id: "ma-oversight",
+    pillarId: "safeguarding",
+    title: "Managing Agent Performance Oversight",
+    question:
+      "Clear distinction and monitoring of third-party managing agent responsibilities?",
+    weight: 4,
+  },
+]
+
+const scorePoints: Record<RubricScore, number | null> = {
+  Pass: 1,
+  Partial: 0.5,
+  Fail: 0,
+  "N/A": null,
+}
+
+export function rubricOutcome(
+  items: RubricItem[],
+  marks: Pick<RubricMark, "itemId" | "score">[]
+) {
+  const scoreByItem = new Map(marks.map((mark) => [mark.itemId, mark.score]))
+  let weightedTotal = 0
+  let earned = 0
+  let scored = 0
+  for (const item of items) {
+    const score = scoreByItem.get(item.id) ?? null
+    if (!score) continue
+    scored += 1
+    const points = scorePoints[score]
+    if (points === null) continue
+    weightedTotal += item.weight
+    earned += item.weight * points
+  }
+  return {
+    scored,
+    total: items.length,
+    percent: weightedTotal === 0 ? null : (earned / weightedTotal) * 100,
+  }
+}
 
 export function inScope<T extends { clientId: string; schemeId: string }>(
   items: T[],

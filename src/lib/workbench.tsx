@@ -16,9 +16,13 @@ import {
   seedActivities,
   seedProjects,
   seedRemediations,
+  seedRubricItems,
   type AuditActivity,
   type AuditProject,
   type RemediationCall,
+  type RubricItem,
+  type RubricMark,
+  type RubricScore,
 } from "@/lib/audit"
 
 type NewProjectInput = {
@@ -32,6 +36,13 @@ type NewProjectInput = {
 type UploadInput = {
   projectId: string
   fileNames: string[]
+}
+
+type RubricItemInput = {
+  pillarId: string
+  title: string
+  question: string
+  weight: number
 }
 
 type WorkbenchContextValue = {
@@ -56,6 +67,13 @@ type WorkbenchContextValue = {
   }
   addProject: (input: NewProjectInput) => void
   uploadBatch: (input: UploadInput) => void
+  rubricItems: RubricItem[]
+  rubricMarks: RubricMark[]
+  setRubricScore: (itemId: string, score: RubricScore) => void
+  setRubricNote: (itemId: string, note: string) => void
+  addRubricItem: (input: RubricItemInput) => void
+  updateRubricItem: (itemId: string, input: RubricItemInput) => void
+  deleteRubricItem: (itemId: string) => void
 }
 
 const WorkbenchContext = createContext<WorkbenchContextValue | null>(null)
@@ -67,6 +85,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [clientId, setClientIdState] = useState(clients[0].id)
   const [schemeId, setSchemeId] = useState("all")
   const [secureMode, setSecureMode] = useState(true)
+  const [rubricItems, setRubricItems] = useState(seedRubricItems)
+  const [rubricMarks, setRubricMarks] = useState<RubricMark[]>([])
 
   const client = clients.find((item) => item.id === clientId) ?? clients[0]
 
@@ -142,6 +162,101 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     ])
   }
 
+  function upsertRubricMark(
+    itemId: string,
+    patch: Partial<Pick<RubricMark, "score" | "note">>
+  ) {
+    setRubricMarks((current) => {
+      const index = current.findIndex(
+        (mark) =>
+          mark.itemId === itemId &&
+          mark.clientId === client.id &&
+          mark.schemeId === schemeId
+      )
+      if (index === -1) {
+        return [
+          ...current,
+          {
+            itemId,
+            clientId: client.id,
+            schemeId,
+            score: patch.score ?? null,
+            note: patch.note ?? "",
+          },
+        ]
+      }
+      const next = current.slice()
+      next[index] = { ...next[index], ...patch }
+      return next
+    })
+  }
+
+  function setRubricScore(itemId: string, score: RubricScore) {
+    setRubricMarks((current) => {
+      const index = current.findIndex(
+        (mark) =>
+          mark.itemId === itemId &&
+          mark.clientId === client.id &&
+          mark.schemeId === schemeId
+      )
+      const existing = index === -1 ? null : current[index]
+      const nextScore = existing?.score === score ? null : score
+      if (index === -1) {
+        return [
+          ...current,
+          {
+            itemId,
+            clientId: client.id,
+            schemeId,
+            score: nextScore,
+            note: "",
+          },
+        ]
+      }
+      const next = current.slice()
+      next[index] = { ...next[index], score: nextScore }
+      return next
+    })
+  }
+
+  function setRubricNote(itemId: string, note: string) {
+    upsertRubricMark(itemId, { note })
+  }
+
+  function addRubricItem(input: RubricItemInput) {
+    setRubricItems((current) => [
+      ...current,
+      {
+        id: `ri-${crypto.randomUUID()}`,
+        pillarId: input.pillarId,
+        title: input.title.trim(),
+        question: input.question.trim(),
+        weight: input.weight,
+      },
+    ])
+  }
+
+  function updateRubricItem(itemId: string, input: RubricItemInput) {
+    setRubricItems((current) =>
+      current.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              pillarId: input.pillarId,
+              title: input.title.trim(),
+              question: input.question.trim(),
+              weight: input.weight,
+            }
+          : item
+      )
+    )
+  }
+
+  function deleteRubricItem(itemId: string) {
+    setRubricItems((current) => current.filter((item) => item.id !== itemId))
+    setRubricMarks((current) => current.filter((mark) => mark.itemId !== itemId))
+  }
+
   function uploadBatch(input: UploadInput) {
     const project = projects.find((item) => item.id === input.projectId)
     if (!project || input.fileNames.length === 0) return
@@ -193,6 +308,15 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     metrics,
     addProject,
     uploadBatch,
+    rubricItems,
+    rubricMarks: rubricMarks.filter(
+      (mark) => mark.clientId === client.id && mark.schemeId === schemeId
+    ),
+    setRubricScore,
+    setRubricNote,
+    addRubricItem,
+    updateRubricItem,
+    deleteRubricItem,
   }
 
   return (
