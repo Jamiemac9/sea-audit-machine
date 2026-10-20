@@ -17,10 +17,20 @@ import { createZip } from "@/lib/zip"
 import { useWorkbench } from "@/lib/workbench"
 
 export function PackageView() {
-  const { file } = useWorkbench()
-  const result = rateFile(file)
-  const pack = reportPackage(file)
+  const { file, project, questions } = useWorkbench()
   const [notice, setNotice] = useState("")
+  if (!file) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        This project has no resident file to package.
+      </p>
+    )
+  }
+  const result = rateFile(file)
+  const pack = reportPackage(file, {
+    clientLabel: project.clientLabel,
+    questions: questions.filter((question) => question.projectId === file.projectId),
+  })
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">

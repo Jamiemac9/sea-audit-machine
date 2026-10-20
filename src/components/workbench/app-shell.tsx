@@ -9,6 +9,7 @@ import {
   FileSearch,
   Files,
   LayoutGrid,
+  ListChecks,
   Menu,
   Settings,
   ShieldCheck,
@@ -41,10 +42,11 @@ import { useWorkbench } from "@/lib/workbench"
 import { cn } from "cn"
 
 const navigation = [
-  { href: "/", label: "Caseload", icon: ClipboardList },
-  { href: "/audit", label: "Audit execution", icon: FileSearch },
+  { href: "/", label: "Audit project", icon: ClipboardList },
+  { href: "/audit", label: "Resident file", icon: FileSearch },
   { href: "/documents", label: "Document suite", icon: Files },
   { href: "/risk", label: "Risk matrix", icon: LayoutGrid },
+  { href: "/rubric", label: "Rubric settings", icon: ListChecks },
   { href: "/reports", label: "Report package", icon: Archive },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
@@ -109,6 +111,11 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 
 function FileSelect() {
   const { files, file, setFileId } = useWorkbench()
+  if (!file) {
+    return (
+      <p className="text-sm text-muted-foreground">No resident file in this project</p>
+    )
+  }
 
   return (
     <Select
@@ -142,7 +149,7 @@ function FileSelect() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { secureMode, file } = useWorkbench()
+  const { secureMode, file, project } = useWorkbench()
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
@@ -179,12 +186,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   Active context
                 </p>
                 <p className="truncate text-sm font-medium">
-                  {CLIENT_TOKEN}
+                  {project.clientLabel}
                   <span className="px-1.5 text-muted-foreground">/</span>
                   {AGENT_TOKEN}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
-                  Mock training agent: {file.managingAgent}
+                  {project.name}
+                  {file?.managingAgent ? ` · ${file.managingAgent}` : ""}
                 </p>
               </div>
             </div>

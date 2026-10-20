@@ -28,6 +28,13 @@ const cellTone = (score: number) => {
 
 export function RiskView() {
   const { file } = useWorkbench()
+  if (!file) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        This project has no resident file. Add one from the audit project screen.
+      </p>
+    )
+  }
   const score = matrixScore(file.likelihood, file.severity)
   const tier = riskTier(score)
   const planRequired = requiresRiskManagementPlan(score)

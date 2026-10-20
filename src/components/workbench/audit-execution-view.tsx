@@ -1,6 +1,8 @@
 "use client"
 
+import { InlineText } from "@/components/workbench/inline-field"
 import { RatingBadge, RiskTierBadge } from "@/components/workbench/rating-badge"
+import { RubricEditor } from "@/components/workbench/rubric-editor"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -34,7 +36,20 @@ import { rateFile } from "@/lib/rating"
 import { useWorkbench } from "@/lib/workbench"
 
 export function AuditExecutionView() {
+  const { file } = useWorkbench()
+  if (!file) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        This project has no resident file. Add one from the audit project screen.
+      </p>
+    )
+  }
+  return <AuditExecutionBody />
+}
+
+function AuditExecutionBody() {
   const { file, updateFile, setDocumentReceived, signOff } = useWorkbench()
+  if (!file) return null
   const score = matrixScore(file.likelihood, file.severity)
   const tier = riskTier(score)
   const result = rateFile(file)
@@ -46,11 +61,27 @@ export function AuditExecutionView() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
-            Audit execution
+            Resident file
           </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            {file.reference}
+          <h1 className="mt-1 max-w-md text-2xl font-semibold tracking-tight">
+            <InlineText
+              value={file.reference}
+              ariaLabel="Resident file reference"
+              className="text-2xl font-semibold"
+              onCommit={(reference) =>
+                updateFile(file.id, { reference: reference || file.reference })
+              }
+            />
           </h1>
+          <div className="mt-2 max-w-xl">
+            <InlineText
+              multiline
+              value={file.observation}
+              placeholder="Add a practitioner observation"
+              ariaLabel="Practitioner observation"
+              onCommit={(observation) => updateFile(file.id, { observation })}
+            />
+          </div>
           <p className="mt-1 text-sm text-muted-foreground">
             Local OCR extract on the left. WR checks, matrix, and feedback on
             the right. Nothing is sent off this workstation.
@@ -84,6 +115,18 @@ export function AuditExecutionView() {
         </Card>
 
         <div className="flex flex-col gap-4 lg:h-[calc(100svh-16rem)] lg:overflow-y-auto lg:pr-1">
+          <Card className="shadow-sm ring-foreground/8">
+            <CardHeader>
+              <CardTitle>Rubric scores</CardTitle>
+              <CardDescription>
+                Choose a score and click the observation to edit it. Questions
+                for this project include any bespoke checks.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RubricEditor fileId={file.id} contained={false} />
+            </CardContent>
+          </Card>
           <Card className="shadow-sm ring-foreground/8">
             <CardHeader>
               <CardTitle>File rating</CardTitle>

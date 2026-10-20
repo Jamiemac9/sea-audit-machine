@@ -12,6 +12,13 @@ import { useWorkbench } from "@/lib/workbench"
 
 export function DocumentsView() {
   const { file, setDocumentReceived } = useWorkbench()
+  if (!file) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        This project has no resident file. Add one from the audit project screen.
+      </p>
+    )
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">

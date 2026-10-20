@@ -12,7 +12,7 @@ import { AGENT_TOKEN, CLIENT_TOKEN } from "@/lib/documents"
 import { useWorkbench } from "@/lib/workbench"
 
 export function SettingsView() {
-  const { secureMode, setSecureMode, file } = useWorkbench()
+  const { secureMode, setSecureMode, file, project } = useWorkbench()
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -86,12 +86,14 @@ export function SettingsView() {
         </CardHeader>
         <CardContent className="text-sm">
           <p className="font-medium">
-            {CLIENT_TOKEN}
+            {project.name}
             <span className="px-1.5 text-muted-foreground">/</span>
-            {AGENT_TOKEN}
+            {project.clientLabel}
           </p>
           <p className="mt-2 text-muted-foreground">
-            {file.reference} · mock training agent {file.managingAgent}
+            {file
+              ? `${file.reference} · mock training agent ${file.managingAgent || "not set"}`
+              : "No resident file is open."}
           </p>
         </CardContent>
       </Card>

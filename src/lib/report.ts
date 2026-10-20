@@ -2,8 +2,12 @@ import { AGENT_TOKEN, CLIENT_TOKEN, residentDocuments } from "@/lib/documents"
 import { analyseFormatting } from "@/lib/feedback"
 import { matrixScore, requiresRiskManagementPlan, riskTier } from "@/lib/risk"
 import { rateFile, type ResidentFile } from "@/lib/rating"
+import { emptyMark, type RubricQuestion } from "@/lib/rubric"
 
-export function reportPackage(file: ResidentFile) {
+export function reportPackage(
+  file: ResidentFile,
+  context?: { clientLabel?: string; questions?: RubricQuestion[] },
+) {
   const result = rateFile(file)
   const score = matrixScore(file.likelihood, file.severity)
   const tier = riskTier(score)
@@ -18,7 +22,7 @@ export function reportPackage(file: ResidentFile) {
 
   const report = [
     "Seaaudit internal audit report",
-    `Client: ${CLIENT_TOKEN}`,
+    `Client: ${context?.clientLabel || CLIENT_TOKEN}`,
     `Managing agent: ${AGENT_TOKEN}`,
     `Mock training agent: ${file.managingAgent}`,
     `File: ${file.reference}`,
@@ -48,6 +52,15 @@ export function reportPackage(file: ResidentFile) {
     "",
     "Feedback on Support Provided",
     file.feedbackOnSupport || "(empty)",
+    "",
+    "Practitioner observation",
+    file.observation || "(none)",
+    "",
+    "Rubric",
+    ...(context?.questions ?? []).map((question) => {
+      const mark = file.marks[question.id] ?? emptyMark()
+      return `- ${mark.score || "Unset"} | ${question.prompt}${mark.note ? ` | ${mark.note}` : ""}`
+    }),
     "",
     catchUp
       ? "REMEDIATION: schedule a catch-up call before returning this file."

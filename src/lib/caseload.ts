@@ -4,6 +4,95 @@ import {
   type WrCode,
 } from "@/lib/documents"
 import type { ResidentFile } from "@/lib/rating"
+import {
+  standardQuestions,
+  type RubricMark,
+  type RubricQuestion,
+} from "@/lib/rubric"
+
+export type AuditProject = {
+  id: string
+  name: string
+  clientLabel: string
+}
+
+export const seedProjects: AuditProject[] = [
+  {
+    id: "q4-sample",
+    name: "Q4 resident file sample",
+    clientLabel: CLIENT_TOKEN,
+  },
+  {
+    id: "bespoke-sample",
+    name: "Bespoke RP check",
+    clientLabel: CLIENT_TOKEN,
+  },
+]
+
+const bespokePrompt =
+  "RP bespoke check: the rent letter names the legal entity on WR-02."
+
+export const seedQuestions: RubricQuestion[] = [
+  ...standardQuestions("q4-sample"),
+  ...standardQuestions("bespoke-sample"),
+  {
+    id: "bespoke-sample:rent-entity",
+    projectId: "bespoke-sample",
+    prompt: bespokePrompt,
+    defaultPrompt: bespokePrompt,
+    source: "custom",
+    wrCode: "WR-02",
+  },
+]
+
+export function referenceFromName(name: string) {
+  const stem = name.replace(/\.[^.]+$/, "")
+  const cleaned = stem
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 24)
+  return cleaned || "UPLOAD"
+}
+
+export function createResidentFile(input: {
+  projectId: string
+  reference: string
+  ocrText: string
+  managingAgent?: string
+}): ResidentFile {
+  return {
+    id: `upload-${crypto.randomUUID()}`,
+    projectId: input.projectId,
+    reference: input.reference,
+    managingAgent: input.managingAgent ?? "",
+    documentDeadline: new Date().toISOString().slice(0, 10),
+    teamsCall: null,
+    status: "Docs Received",
+    likelihood: 1,
+    severity: 1,
+    scoreOnForm: 1,
+    riskManagementPlan: false,
+    lastRiskReview: null,
+    activeGoals: 0,
+    weeklySupportMinutes: 0,
+    residentVoice: false,
+    nonEngagement: false,
+    warningTrackComplete: false,
+    followUpRecorded: false,
+    relevancy: "general",
+    arrearsWeeks: 0,
+    seaEligibilityRecorded: false,
+    received: receivedMap(false),
+    ocrText: input.ocrText,
+    supportDelivered: "",
+    feedbackOnSupport: "",
+    feedbackCategories: [],
+    observation: "",
+    marks: {},
+    signedOff: false,
+  }
+}
 
 const goldSupport = `- Supported resident to contact the housing benefit team about the service charge letter.
 - Supported resident to practise the next step on the budgeting goal.`
@@ -20,7 +109,7 @@ function withGaps(
   return next
 }
 
-export const seedFiles: ResidentFile[] = [
+const seedFileRecords: Omit<ResidentFile, "projectId" | "marks" | "observation">[] = [
   {
     id: "ch-1042",
     reference: "CH-1042",
@@ -157,3 +246,21 @@ Non-engagement is noted. WR-16, WR-17, and WR-18 are not in the extract.`,
     signedOff: false,
   },
 ]
+
+export const seedFiles: ResidentFile[] = seedFileRecords.map((file) => ({
+  ...file,
+  projectId: "q4-sample",
+  observation:
+    file.id === "ch-1042"
+      ? "Resident voice is clear in the session note."
+      : "",
+  marks:
+    file.id === "ch-1042"
+      ? {
+          "q4-sample:WR-13": {
+            score: "Pass",
+            note: "The hour is evidenced and the resident describes the next step.",
+          },
+        }
+      : ({} as Record<string, RubricMark>),
+}))

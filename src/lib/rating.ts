@@ -1,5 +1,6 @@
 import { countReceived, WR_CODES, type WrCode } from "@/lib/documents"
 import { analyseFormatting } from "@/lib/feedback"
+import type { RubricMark } from "@/lib/rubric"
 import {
   matrixScore,
   requiresRiskManagementPlan,
@@ -49,6 +50,9 @@ export type ResidentFile = {
   supportDelivered: string
   feedbackOnSupport: string
   feedbackCategories: string[]
+  observation: string
+  marks: Record<string, RubricMark>
+  projectId: string
   signedOff: boolean
 }
 
