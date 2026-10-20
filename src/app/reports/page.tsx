@@ -1,10 +1,10 @@
 import type { Metadata } from "next"
-import { ReportsView } from "@/components/workbench/reports-view"
+import { PackageView } from "@/components/workbench/package-view"
 
 export const metadata: Metadata = {
-  title: "Reports Archive",
+  title: "Report package",
 }
 
 export default function ReportsPage() {
-  return <ReportsView />
+  return <PackageView />
 }
