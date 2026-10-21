@@ -16,14 +16,18 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "SEA Audit",
-    template: "%s · SEA Audit",
+    default: "Seaaudit",
+    template: "%s · Seaaudit",
   },
   description:
-    "Local internal audit workbench for housing compliance, managing agents, and statutory assurance.",
+    "Seaaudit — Support Audit CRM, Audit Workbench, Property Compliance (Big 8), and RP & MA Directory. Reports use [Client_RP_Name] or the active Registered Provider.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode
+}>) {
   return (
     <html
       lang="en"
@@ -35,5 +39,5 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </WorkbenchProvider>
       </body>
     </html>
-  );
+  )
 }

@@ -1,10 +1,10 @@
 import type { Metadata } from "next"
-import { DashboardView } from "@/components/workbench/dashboard-view"
+import { SupportCrmView } from "@/components/workbench/support-crm-view"
 
 export const metadata: Metadata = {
-  title: "Projects",
+  title: "Support Audit CRM",
 }
 
 export default function HomePage() {
-  return <DashboardView />
+  return <SupportCrmView />
 }

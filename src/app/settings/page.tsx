@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { SettingsView } from "@/components/workbench/settings-view"
 
 export const metadata: Metadata = {
-  title: "Settings",
+  title: "Auditor Settings",
 }
 
 export default function SettingsPage() {
