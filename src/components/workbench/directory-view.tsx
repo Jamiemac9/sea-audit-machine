@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -21,7 +22,6 @@ import {
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { useWorkbench } from "@/lib/workbench"
-import { cn } from "cn"
 
 export function DirectoryView() {
   const [tab, setTab] = useState<"rp" | "ma">("rp")
@@ -41,30 +41,40 @@ export function DirectoryView() {
         </p>
       </div>
 
-      <div className="inline-flex w-fit rounded-lg border bg-card p-0.5">
-        <button
+      <div
+        role="tablist"
+        aria-label="Directory sections"
+        className="flex flex-wrap gap-2"
+      >
+        <Button
           type="button"
-          className={cn(
-            "rounded-md px-3 py-1.5 text-sm font-medium",
-            tab === "rp" ? "bg-primary text-primary-foreground" : "hover:bg-muted",
-          )}
+          role="tab"
+          id="directory-tab-rp"
+          aria-selected={tab === "rp"}
+          variant={tab === "rp" ? "default" : "outline"}
           onClick={() => setTab("rp")}
         >
           Registered Providers (RPs)
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className={cn(
-            "rounded-md px-3 py-1.5 text-sm font-medium",
-            tab === "ma" ? "bg-primary text-primary-foreground" : "hover:bg-muted",
-          )}
+          role="tab"
+          id="directory-tab-ma"
+          aria-selected={tab === "ma"}
+          variant={tab === "ma" ? "default" : "outline"}
           onClick={() => setTab("ma")}
         >
           Managing Agents (MAs)
-        </button>
+        </Button>
       </div>
 
-      {tab === "rp" ? <RpDirectory /> : <MaDirectory />}
+      <div
+        role="tabpanel"
+        id={tab === "rp" ? "panel-rp" : "panel-ma"}
+        aria-labelledby={tab === "rp" ? "directory-tab-rp" : "directory-tab-ma"}
+      >
+        {tab === "rp" ? <RpDirectory /> : <MaDirectory />}
+      </div>
     </div>
   )
 }
