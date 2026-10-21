@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppShell } from "@/components/workbench/app-shell";
-import { WorkbenchProvider } from "@/lib/workbench";
+import { WorkbenchProvider } from "@/lib/store";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,11 +16,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "SEA Audit",
-    template: "%s · SEA Audit",
+    default: "Seaaudit",
+    template: "%s · Seaaudit",
   },
   description:
-    "Local internal audit workbench for housing compliance, managing agents, and statutory assurance.",
+    "Local workbench for SEA resident-file audits, with a caseload board, side-by-side review, and Word reports.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
