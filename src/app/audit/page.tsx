@@ -1,10 +1,5 @@
-import type { Metadata } from "next"
-import { AuditExecutionView } from "@/components/workbench/audit-execution-view"
+import { redirect } from "next/navigation"
 
-export const metadata: Metadata = {
-  title: "Resident file",
-}
-
-export default function AuditPage() {
-  return <AuditExecutionView />
+export default function AuditRedirectPage() {
+  redirect("/workbench")
 }

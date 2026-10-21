@@ -1,10 +1,5 @@
-import type { Metadata } from "next"
-import { PackageView } from "@/components/workbench/package-view"
+import { redirect } from "next/navigation"
 
-export const metadata: Metadata = {
-  title: "Report package",
-}
-
-export default function ReportsPage() {
-  return <PackageView />
+export default function ReportsRedirectPage() {
+  redirect("/workbench")
 }

@@ -1,10 +1,5 @@
-import type { Metadata } from "next"
-import { DocumentsView } from "@/components/workbench/documents-view"
+import { redirect } from "next/navigation"
 
-export const metadata: Metadata = {
-  title: "Document suite",
-}
-
-export default function DocumentsPage() {
-  return <DocumentsView />
+export default function DocumentsRedirectPage() {
+  redirect("/workbench")
 }

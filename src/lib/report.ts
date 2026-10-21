@@ -1,4 +1,8 @@
 import { AGENT_TOKEN, CLIENT_TOKEN, residentDocuments } from "@/lib/documents"
+import {
+  reportAgentLabel,
+  reportClientLabel,
+} from "@/lib/deepAuditExtractor"
 import { analyseFormatting } from "@/lib/feedback"
 import { matrixScore, requiresRiskManagementPlan, riskTier } from "@/lib/risk"
 import { rateFile, type ResidentFile } from "@/lib/rating"
@@ -13,6 +17,8 @@ export function reportPackage(
   const tier = riskTier(score)
   const formatting = analyseFormatting(file.supportDelivered, file.feedbackOnSupport)
   const catchUp = result.rating === "Amber" || result.rating === "Red"
+  const client = reportClientLabel(context?.clientLabel, CLIENT_TOKEN)
+  const agent = reportAgentLabel(file.managingAgent, AGENT_TOKEN)
   const checklist = residentDocuments
     .map(
       (document) =>
@@ -22,12 +28,19 @@ export function reportPackage(
 
   const report = [
     "Seaaudit internal audit report",
-    `Client: ${context?.clientLabel || CLIENT_TOKEN}`,
-    `Managing agent: ${AGENT_TOKEN}`,
-    `Mock training agent: ${file.managingAgent}`,
+    `Client: ${client}`,
+    `Managing agent: ${agent}`,
     `File: ${file.reference}`,
     `Rating: ${result.rating}`,
     `Signed off: ${file.signedOff ? "Yes" : "No"}`,
+    "",
+    "Selected support goals",
+    ...(file.extractedGoals.length
+      ? file.extractedGoals.map((goal) => `- ${goal}`)
+      : ["- (none extracted)"]),
+    "",
+    "Support by goal",
+    file.extractedSupportByGoal || "(none)",
     "",
     "Reasons",
     ...result.reasons.map((reason) => `- ${reason}`),
@@ -74,7 +87,7 @@ export function reportPackage(
   if (catchUp) {
     files.push({
       name: "REMEDIATION-CATCH-UP-REQUIRED.txt",
-      text: `${file.reference} is rated ${result.rating}. Schedule a remediation catch-up with ${AGENT_TOKEN} before the secure return.`,
+      text: `${file.reference} is rated ${result.rating}. Schedule a remediation catch-up with ${agent} before the secure return.`,
     })
   }
   return { files, catchUp, result }

@@ -20,10 +20,14 @@ export const metadata: Metadata = {
     template: "%s · Seaaudit",
   },
   description:
-    "Local workbench for auditing resident files WR-01 to WR-22. Client and managing-agent names stay as tokens.",
+    "Seaaudit — Support Audit CRM, Audit Workbench, Property Compliance (Big 8), and RP & MA Directory. Reports use [Client_RP_Name] or the active Registered Provider.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode
+}>) {
   return (
     <html
       lang="en"
@@ -35,5 +39,5 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </WorkbenchProvider>
       </body>
     </html>
-  );
+  )
 }

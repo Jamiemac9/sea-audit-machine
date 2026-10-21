@@ -82,7 +82,7 @@ export const residentDocuments: ResidentDocument[] = [
   },
   {
     code: "WR-08",
-    title: "Risk Assessment",
+    title: "Risk Assessment (matrix worksheet)",
     checks: [
       "Likelihood and severity use the 5x5 matrix.",
       "The written score equals likelihood × severity.",
@@ -91,10 +91,11 @@ export const residentDocuments: ResidentDocument[] = [
   },
   {
     code: "WR-09",
-    title: "Risk Management Plan",
+    title: "Risk Assessment & Management Plan",
     checks: [
-      "A plan is present whenever the matrix score is 5 or above.",
-      "Controls are dated and still active.",
+      "All risk category scores are valid 5×5 products.",
+      "A Risk Management Plan with triggers is present whenever the score is 5 or above.",
+      "3 / 6 / 9 / 12-month review columns are completed where required.",
     ],
   },
   {

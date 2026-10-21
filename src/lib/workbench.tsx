@@ -3,9 +3,16 @@
 import {
   createContext,
   useContext,
+  useMemo,
   useState,
   type ReactNode,
 } from "react"
+import {
+  DEFAULT_AUDITOR,
+  DEFAULT_MASTERLIST,
+  type AuditorProfile,
+  type MasterlistSection,
+} from "@/lib/auditorSettings"
 import {
   createResidentFile,
   referenceFromName,
@@ -14,7 +21,28 @@ import {
   seedQuestions,
   type AuditProject,
 } from "@/lib/caseload"
+import {
+  applyExtractionToFile,
+  deepAuditExtract,
+  mergeBundleClassification,
+  toBundleFiles,
+  type ClassifiedUpload,
+} from "@/lib/deepAuditExtractor"
+import {
+  buildMissingInfoRequestEmail,
+  scanCompleteness,
+} from "@/lib/completenessGate"
+import {
+  seedManagingAgents,
+  seedRegisteredProviders,
+  type ManagingAgentProfile,
+  type RegisteredProvider,
+} from "@/lib/directory"
 import { CLIENT_TOKEN, type WrCode } from "@/lib/documents"
+import {
+  seedProperties,
+  type PropertyComplianceRow,
+} from "@/lib/propertyCompliance"
 import type { AuditStatus, ResidentFile } from "@/lib/rating"
 import {
   standardQuestions,
@@ -53,10 +81,37 @@ type WorkbenchContextValue = {
     projectId: string,
     uploads: { name: string; text: string }[],
   ) => void
+  addBundleToFile: (fileId: string, uploads: ClassifiedUpload[]) => void
+  createResidentFromBundle: (
+    projectId: string,
+    reference: string,
+    uploads: ClassifiedUpload[],
+    meta?: { managingAgent?: string; managingAgentId?: string },
+  ) => void
+  flagMissingRequest: (fileId: string, deadlineDays?: number) => string
+  uploadReceivedItems: (fileId: string, uploads: ClassifiedUpload[]) => void
+  markDownAndProceed: (fileId: string) => void
+  runDeepExtraction: (fileId: string) => void
   reassignFile: (fileId: string, projectId: string) => void
   removeFile: (fileId: string) => void
   secureMode: boolean
   setSecureMode: (active: boolean) => void
+  registeredProviders: RegisteredProvider[]
+  managingAgents: ManagingAgentProfile[]
+  updateRegisteredProvider: (
+    id: string,
+    patch: Partial<RegisteredProvider>,
+  ) => void
+  updateManagingAgent: (
+    id: string,
+    patch: Partial<ManagingAgentProfile>,
+  ) => void
+  properties: PropertyComplianceRow[]
+  updateProperty: (id: string, patch: Partial<PropertyComplianceRow>) => void
+  auditor: AuditorProfile
+  setAuditor: (patch: Partial<AuditorProfile>) => void
+  masterlist: MasterlistSection[]
+  updateMasterlistSection: (id: string, content: string) => void
 }
 
 type WorkbenchState = {
@@ -65,9 +120,20 @@ type WorkbenchState = {
   questions: RubricQuestion[]
   files: ResidentFile[]
   fileId: string
+  registeredProviders: RegisteredProvider[]
+  managingAgents: ManagingAgentProfile[]
+  properties: PropertyComplianceRow[]
+  auditor: AuditorProfile
+  masterlist: MasterlistSection[]
 }
 
 const WorkbenchContext = createContext<WorkbenchContextValue | null>(null)
+
+function addDaysIso(days: number) {
+  const date = new Date()
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
 
 export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<WorkbenchState>({
@@ -76,13 +142,21 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     questions: seedQuestions,
     files: seedFiles,
     fileId: seedFiles[0].id,
+    registeredProviders: seedRegisteredProviders,
+    managingAgents: seedManagingAgents,
+    properties: seedProperties,
+    auditor: DEFAULT_AUDITOR,
+    masterlist: DEFAULT_MASTERLIST,
   })
   const [secureMode, setSecureMode] = useState(true)
   const project =
     state.projects.find((item) => item.id === state.projectId) ??
     state.projects[0]
   const file = state.files.find((item) => item.id === state.fileId) ?? null
-  const projectFiles = state.files.filter((item) => item.projectId === project.id)
+  const projectFiles = useMemo(
+    () => state.files.filter((item) => item.projectId === project.id),
+    [state.files, project.id],
+  )
 
   function setProjectId(projectId: string) {
     setState((current) => {
@@ -109,7 +183,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     const id = `project-${crypto.randomUUID()}`
     const nextProject: AuditProject = {
       id,
-      name: "New audit project",
+      name: "New support audit project",
       clientLabel: CLIENT_TOKEN,
     }
     setState((current) => ({
@@ -211,7 +285,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       ...current,
       files: current.files.map((item) => {
         if (item.id !== fileId) return item
-        const existing = item.marks[questionId] ?? { score: "" as RubricScore, note: "" }
+        const existing = item.marks[questionId] ?? {
+          score: "" as RubricScore,
+          note: "",
+        }
         return {
           ...item,
           signedOff: false,
@@ -239,28 +316,179 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     projectId: string,
     uploads: { name: string; text: string }[],
   ) {
+    const classified: ClassifiedUpload[] = uploads.map((upload) => ({
+      name: upload.name,
+      text: upload.text,
+      classifiedAs: "unclassified",
+    }))
+    createResidentFromBundle(projectId, referenceFromName(uploads[0]?.name ?? "UPLOAD"), classified)
+  }
+
+  function createResidentFromBundle(
+    projectId: string,
+    reference: string,
+    uploads: ClassifiedUpload[],
+    meta?: { managingAgent?: string; managingAgentId?: string },
+  ) {
     setState((current) => {
       const taken = new Set(current.files.map((item) => item.reference))
-      const created = uploads.map((upload) => {
-        const base = referenceFromName(upload.name)
-        let reference = base
-        let suffix = 2
-        while (taken.has(reference)) {
-          reference = `${base}-${suffix}`
-          suffix += 1
-        }
-        taken.add(reference)
-        return createResidentFile({
-          projectId,
-          reference,
-          ocrText: upload.text,
-        })
+      let nextRef = reference
+      let suffix = 2
+      while (taken.has(nextRef)) {
+        nextRef = `${reference}-${suffix}`
+        suffix += 1
+      }
+      const classifiedReceived = mergeBundleClassification(uploads)
+      const created = createResidentFile({
+        projectId,
+        reference: nextRef,
+        ocrText: uploads.map((u) => `--- ${u.name} ---\n${u.text}`).join("\n\n"),
+        managingAgent: meta?.managingAgent,
+        managingAgentId: meta?.managingAgentId,
       })
+      created.received = { ...created.received, ...classifiedReceived }
+      created.bundleFiles = toBundleFiles(uploads)
+      created.status = "Docs Received"
       return {
         ...current,
         projectId,
-        files: [...created, ...current.files],
-        fileId: created[0]?.id ?? current.fileId,
+        files: [created, ...current.files],
+        fileId: created.id,
+      }
+    })
+  }
+
+  function addBundleToFile(fileId: string, uploads: ClassifiedUpload[]) {
+    setState((current) => ({
+      ...current,
+      files: current.files.map((item) => {
+        if (item.id !== fileId) return item
+        const bundleFiles = [...(item.bundleFiles ?? []), ...toBundleFiles(uploads)]
+        const classified = mergeBundleClassification(
+          bundleFiles.map((file) => ({
+            name: file.name,
+            text: file.text,
+            classifiedAs: file.classifiedAs,
+          })),
+        )
+        const ocrText = [
+          item.ocrText,
+          ...uploads.map((u) => `--- ${u.name} ---\n${u.text}`),
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+        return {
+          ...item,
+          signedOff: false,
+          bundleFiles,
+          ocrText,
+          received: { ...item.received, ...classified },
+          status:
+            item.status === "Awaiting More Info" ? "Docs Received" : item.status,
+        }
+      }),
+    }))
+  }
+
+  function flagMissingRequest(fileId: string, deadlineDays = 7) {
+    let draft = ""
+    setState((current) => {
+      const target = current.files.find((item) => item.id === fileId)
+      if (!target) return current
+      const deadline = addDaysIso(deadlineDays)
+      const scan = scanCompleteness(target, {
+        managingAgents: current.managingAgents,
+      })
+      const projectLabel =
+        current.projects.find((p) => p.id === target.projectId)?.clientLabel ??
+        CLIENT_TOKEN
+      draft = buildMissingInfoRequestEmail(target, scan, {
+        clientLabel: projectLabel,
+        agentName: target.managingAgent,
+        auditorName: current.auditor.name,
+        deadline,
+      })
+      return {
+        ...current,
+        files: current.files.map((item) =>
+          item.id === fileId
+            ? {
+                ...item,
+                status: "Awaiting More Info" as AuditStatus,
+                reRequestDeadline: deadline,
+                gateEmailDraft: draft,
+                signedOff: false,
+              }
+            : item,
+        ),
+      }
+    })
+    return draft
+  }
+
+  function uploadReceivedItems(fileId: string, uploads: ClassifiedUpload[]) {
+    addBundleToFile(fileId, uploads)
+  }
+
+  function markDownAndProceed(fileId: string) {
+    setState((current) => {
+      const target = current.files.find((item) => item.id === fileId)
+      if (!target) return current
+      const scan = scanCompleteness(target, {
+        managingAgents: current.managingAgents,
+      })
+      const openIds = scan.items
+        .filter((item) => !item.markedDown)
+        .map((item) => item.id)
+      return {
+        ...current,
+        files: current.files.map((item) =>
+          item.id === fileId
+            ? {
+                ...item,
+                markedDownItems: [
+                  ...new Set([...(item.markedDownItems ?? []), ...openIds]),
+                ],
+                proceedAfterMarkDown: true,
+                status: "Audit in Progress" as AuditStatus,
+                signedOff: false,
+                nextSteps: [
+                  ...(item.nextSteps ?? []),
+                  "Proceeding with marked-down penalties for items not received after request.",
+                ],
+              }
+            : item,
+        ),
+      }
+    })
+  }
+
+  function runDeepExtraction(fileId: string) {
+    setState((current) => {
+      const target = current.files.find((item) => item.id === fileId)
+      if (!target) return current
+      const extraction = deepAuditExtract(target, {
+        managingAgents: current.managingAgents,
+        clientLabel: current.projects.find((p) => p.id === target.projectId)
+          ?.clientLabel,
+      })
+      const patch = applyExtractionToFile(target, extraction)
+      return {
+        ...current,
+        files: current.files.map((item) =>
+          item.id === fileId
+            ? {
+                ...item,
+                ...patch,
+                status:
+                  item.status === "Docs Received" ||
+                  item.status === "Awaiting More Info"
+                    ? ("Audit in Progress" as AuditStatus)
+                    : item.status,
+                signedOff: false,
+              }
+            : item,
+        ),
       }
     })
   }
@@ -294,6 +522,55 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  function updateRegisteredProvider(
+    id: string,
+    patch: Partial<RegisteredProvider>,
+  ) {
+    setState((current) => ({
+      ...current,
+      registeredProviders: current.registeredProviders.map((item) =>
+        item.id === id ? { ...item, ...patch } : item,
+      ),
+    }))
+  }
+
+  function updateManagingAgent(
+    id: string,
+    patch: Partial<ManagingAgentProfile>,
+  ) {
+    setState((current) => ({
+      ...current,
+      managingAgents: current.managingAgents.map((item) =>
+        item.id === id ? { ...item, ...patch } : item,
+      ),
+    }))
+  }
+
+  function updateProperty(id: string, patch: Partial<PropertyComplianceRow>) {
+    setState((current) => ({
+      ...current,
+      properties: current.properties.map((item) =>
+        item.id === id ? { ...item, ...patch } : item,
+      ),
+    }))
+  }
+
+  function setAuditor(patch: Partial<AuditorProfile>) {
+    setState((current) => ({
+      ...current,
+      auditor: { ...current.auditor, ...patch },
+    }))
+  }
+
+  function updateMasterlistSection(id: string, content: string) {
+    setState((current) => ({
+      ...current,
+      masterlist: current.masterlist.map((item) =>
+        item.id === id ? { ...item, content } : item,
+      ),
+    }))
+  }
+
   return (
     <WorkbenchContext.Provider
       value={{
@@ -319,10 +596,26 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         setMark,
         signOff,
         addUploadedFiles,
+        addBundleToFile,
+        createResidentFromBundle,
+        flagMissingRequest,
+        uploadReceivedItems,
+        markDownAndProceed,
+        runDeepExtraction,
         reassignFile,
         removeFile,
         secureMode,
         setSecureMode,
+        registeredProviders: state.registeredProviders,
+        managingAgents: state.managingAgents,
+        updateRegisteredProvider,
+        updateManagingAgent,
+        properties: state.properties,
+        updateProperty,
+        auditor: state.auditor,
+        setAuditor,
+        masterlist: state.masterlist,
+        updateMasterlistSection,
       }}
     >
       {children}

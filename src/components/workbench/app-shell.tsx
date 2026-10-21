@@ -4,12 +4,10 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
 import {
-  Archive,
+  Building2,
   ClipboardList,
+  ContactRound,
   FileSearch,
-  Files,
-  LayoutGrid,
-  ListChecks,
   Menu,
   Settings,
   ShieldCheck,
@@ -37,18 +35,16 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { AGENT_TOKEN, CLIENT_TOKEN } from "@/lib/documents"
+import { CLIENT_TOKEN } from "@/lib/documents"
 import { useWorkbench } from "@/lib/workbench"
 import { cn } from "cn"
 
 const navigation = [
-  { href: "/", label: "Audit project", icon: ClipboardList },
-  { href: "/audit", label: "Resident file", icon: FileSearch },
-  { href: "/documents", label: "Document suite", icon: Files },
-  { href: "/risk", label: "Risk matrix", icon: LayoutGrid },
-  { href: "/rubric", label: "Rubric settings", icon: ListChecks },
-  { href: "/reports", label: "Report package", icon: Archive },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/", label: "Support Audit CRM", icon: ClipboardList },
+  { href: "/workbench", label: "Audit Workbench", icon: FileSearch },
+  { href: "/compliance", label: "Property Compliance CRM", icon: Building2 },
+  { href: "/directory", label: "RP & MA Directory", icon: ContactRound },
+  { href: "/settings", label: "Auditor Settings", icon: Settings },
 ]
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
@@ -65,13 +61,13 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
             Seaaudit
           </p>
           <p className="truncate text-xs text-muted-foreground">
-            Internal Workbench
+            Support & Property Assurance
           </p>
         </div>
       </div>
-      <nav aria-label="Workbench" className="flex flex-1 flex-col gap-1 px-3">
+      <nav aria-label="Modules" className="flex flex-1 flex-col gap-1 px-3">
         <p className="px-3 pb-1 text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
-          Workspace
+          Modules
         </p>
         {navigation.map((item) => {
           const active =
@@ -86,14 +82,14 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
               aria-current={active ? "page" : undefined}
               onClick={onNavigate}
               className={cn(
-                "flex items-center gap-3 rounded-lg border-l-2 px-3 py-2 text-sm transition-colors",
+                "flex items-center gap-3 rounded-lg border-l-2 px-3 py-2.5 text-sm transition-colors",
                 active
                   ? "border-primary bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                   : "border-transparent text-sidebar-foreground/80 hover:bg-muted hover:text-foreground",
               )}
             >
-              <Icon className="size-4" />
-              {item.label}
+              <Icon className="size-4 shrink-0" />
+              <span className="leading-snug">{item.label}</span>
             </Link>
           )
         })}
@@ -101,8 +97,8 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
       <div className="border-t border-sidebar-border px-5 py-4">
         <p className="text-xs font-medium">Workstation copy</p>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Resident files stay on this machine. Reports use {CLIENT_TOKEN} and{" "}
-          {AGENT_TOKEN}.
+          Resident and property files stay on this machine. Reports name{" "}
+          {CLIENT_TOKEN} from the directory.
         </p>
       </div>
     </div>
@@ -113,7 +109,7 @@ function FileSelect() {
   const { files, file, setFileId } = useWorkbench()
   if (!file) {
     return (
-      <p className="text-sm text-muted-foreground">No resident file in this project</p>
+      <p className="text-sm text-muted-foreground">No resident file selected</p>
     )
   }
 
@@ -132,7 +128,7 @@ function FileSelect() {
           {(value) => {
             const selected = files.find((item) => item.id === value)
             return selected
-              ? `${selected.reference} · ${selected.managingAgent}`
+              ? `${selected.reference} · ${selected.managingAgent || "MA"}`
               : "Select a file"
           }}
         </SelectValue>
@@ -140,7 +136,7 @@ function FileSelect() {
       <SelectContent>
         {files.map((item) => (
           <SelectItem key={item.id} value={item.id}>
-            {item.reference} · {item.managingAgent}
+            {item.reference} · {item.managingAgent || "MA not set"}
           </SelectItem>
         ))}
       </SelectContent>
@@ -148,8 +144,17 @@ function FileSelect() {
   )
 }
 
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { secureMode, file, project } = useWorkbench()
+  const { secureMode, file, project, auditor } = useWorkbench()
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
@@ -186,13 +191,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   Active context
                 </p>
                 <p className="truncate text-sm font-medium">
-                  {project.clientLabel}
+                  {project.clientLabel || CLIENT_TOKEN}
                   <span className="px-1.5 text-muted-foreground">/</span>
-                  {AGENT_TOKEN}
+                  {file?.managingAgent || "Managing agent"}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
                   {project.name}
-                  {file?.managingAgent ? ` · ${file.managingAgent}` : ""}
+                  {file ? ` · ${file.reference}` : ""}
                 </p>
               </div>
             </div>
@@ -224,15 +229,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   >
                     <Avatar>
                       <AvatarFallback className="bg-primary text-xs text-primary-foreground">
-                        AO
+                        {initials(auditor.name)}
                       </AvatarFallback>
                     </Avatar>
                     <span className="hidden min-w-0 sm:block">
                       <span className="block text-sm leading-4 font-medium">
-                        Amara Okonkwo
+                        {auditor.name}
                       </span>
                       <span className="block text-xs text-muted-foreground">
-                        Head of Internal Audit
+                        {auditor.role}
                       </span>
                     </span>
                   </DropdownMenuTrigger>
@@ -240,12 +245,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     <DropdownMenuGroup>
                       <DropdownMenuLabel>Local session</DropdownMenuLabel>
                       <div className="px-1.5 py-1.5 text-sm">
-                        <p className="font-medium">Amara Okonkwo</p>
-                        <p className="text-muted-foreground">
-                          Head of Internal Audit
-                        </p>
+                        <p className="font-medium">{auditor.name}</p>
+                        <p className="text-muted-foreground">{auditor.role}</p>
                         <p className="mt-2 text-xs text-muted-foreground">
-                          amara.okonkwo@audit.local
+                          {auditor.email}
                         </p>
                       </div>
                     </DropdownMenuGroup>

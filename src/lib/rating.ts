@@ -14,21 +14,35 @@ export type AuditRating = (typeof AUDIT_RATINGS)[number]
 export type AuditStatus =
   | "Files Requested"
   | "Docs Received"
+  | "Awaiting More Info"
   | "Audit in Progress"
   | "Audit Complete"
 
 export const AUDIT_STATUSES: AuditStatus[] = [
   "Files Requested",
   "Docs Received",
+  "Awaiting More Info",
   "Audit in Progress",
   "Audit Complete",
 ]
+
+export type ResidentBundleFile = {
+  id: string
+  name: string
+  text: string
+  classifiedAs: WrCode | "evidence" | "session" | "unclassified"
+  uploadedAt: string
+}
 
 export type ResidentFile = {
   id: string
   reference: string
   managingAgent: string
+  managingAgentId?: string
+  registeredProviderId?: string
+  propertyAddress?: string
   documentDeadline: string
+  reRequestDeadline?: string | null
   teamsCall: string | null
   status: AuditStatus
   likelihood: number
@@ -47,6 +61,7 @@ export type ResidentFile = {
   seaEligibilityRecorded: boolean
   received: Record<WrCode, boolean>
   ocrText: string
+  bundleFiles: ResidentBundleFile[]
   supportDelivered: string
   feedbackOnSupport: string
   feedbackCategories: string[]
@@ -54,6 +69,13 @@ export type ResidentFile = {
   marks: Record<string, RubricMark>
   projectId: string
   signedOff: boolean
+  markedDownItems: string[]
+  proceedAfterMarkDown: boolean
+  extractedGoals: string[]
+  extractedSupportByGoal: string
+  pointsOfStrength: string[]
+  nextSteps: string[]
+  gateEmailDraft?: string
 }
 
 export type RatingResult = {
@@ -88,6 +110,17 @@ export function rateFile(file: ResidentFile): RatingResult {
     red.push("Support on the file is not relevant to the assessed needs.")
   }
 
+  const marked = file.markedDownItems ?? []
+  if (marked.some((id) => /WR-13|WR-09|WR-11|EVIDENCE/.test(id))) {
+    red.push(
+      "Core items were not received after request and have been marked down as failed.",
+    )
+  } else if (marked.length > 0) {
+    amber.push(
+      "Requested documents remained outstanding after the re-request deadline and were marked down.",
+    )
+  }
+
   if (file.scoreOnForm !== score) {
     amber.push(
       `The score written on the form (${file.scoreOnForm}) does not match likelihood × severity (${score}).`,
@@ -116,7 +149,7 @@ export function rateFile(file: ResidentFile): RatingResult {
   const coreMissing = (["WR-01", "WR-08", "WR-11", "WR-13"] as WrCode[]).filter(
     (code) => !file.received[code],
   )
-  if (coreMissing.length > 0) {
+  if (coreMissing.length > 0 && !file.proceedAfterMarkDown) {
     amber.push(`Core documents are missing: ${coreMissing.join(", ")}.`)
   }
 

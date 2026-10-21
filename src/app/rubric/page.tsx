@@ -1,10 +1,5 @@
-import type { Metadata } from "next"
-import { RubricSettingsView } from "@/components/workbench/rubric-settings-view"
+import { redirect } from "next/navigation"
 
-export const metadata: Metadata = {
-  title: "Rubric settings",
-}
-
-export default function RubricSettingsPage() {
-  return <RubricSettingsView />
+export default function RubricRedirectPage() {
+  redirect("/settings")
 }
