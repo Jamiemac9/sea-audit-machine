@@ -3,17 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
-import {
-  Archive,
-  ClipboardList,
-  FileSearch,
-  Files,
-  LayoutGrid,
-  ListChecks,
-  Menu,
-  Settings,
-  ShieldCheck,
-} from "lucide-react"
+import { ClipboardList, Menu, Scale, Settings, ShieldCheck, UserRound } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -24,60 +14,48 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { AGENT_TOKEN, CLIENT_TOKEN } from "@/lib/documents"
-import { useWorkbench } from "@/lib/workbench"
+import { useWorkbench } from "@/lib/store"
+import { clientLabel } from "@/lib/text"
 import { cn } from "cn"
 
 const navigation = [
-  { href: "/", label: "Audit project", icon: ClipboardList },
-  { href: "/audit", label: "Resident file", icon: FileSearch },
-  { href: "/documents", label: "Document suite", icon: Files },
-  { href: "/risk", label: "Risk matrix", icon: LayoutGrid },
-  { href: "/rubric", label: "Rubric settings", icon: ListChecks },
-  { href: "/reports", label: "Report package", icon: Archive },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/", label: "Caseload CRM Board", icon: ClipboardList },
+  { href: "/workbench", label: "Audit Workbench", icon: Scale },
+  { href: "/settings", label: "Workspace Settings", icon: Settings },
 ]
+
+function initials(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("")
+}
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
 
   return (
-    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
+    <div className="flex h-full flex-col bg-[#1c1f4a] text-white">
       <div className="flex items-center gap-3 px-5 py-5">
-        <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+        <div className="flex size-9 items-center justify-center rounded-lg bg-[#0073ea]">
           <ShieldCheck className="size-4" />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold tracking-tight">
-            Seaaudit
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            Internal Workbench
-          </p>
+          <p className="truncate text-sm font-semibold tracking-tight">Seaaudit</p>
+          <p className="truncate text-xs text-indigo-100/80">Internal Workbench</p>
         </div>
       </div>
       <nav aria-label="Workbench" className="flex flex-1 flex-col gap-1 px-3">
-        <p className="px-3 pb-1 text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
-          Workspace
-        </p>
         {navigation.map((item) => {
-          const active =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.href)
+          const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)
           const Icon = item.icon
           return (
             <Link
@@ -86,79 +64,41 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
               aria-current={active ? "page" : undefined}
               onClick={onNavigate}
               className={cn(
-                "flex items-center gap-3 rounded-lg border-l-2 px-3 py-2 text-sm transition-colors",
-                active
-                  ? "border-primary bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                  : "border-transparent text-sidebar-foreground/80 hover:bg-muted hover:text-foreground",
+                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm whitespace-nowrap transition-colors",
+                active ? "bg-[#0073ea] font-semibold text-white" : "text-indigo-100/85 hover:bg-white/10",
               )}
             >
-              <Icon className="size-4" />
+              <Icon className="size-4 shrink-0" />
               {item.label}
             </Link>
           )
         })}
       </nav>
-      <div className="border-t border-sidebar-border px-5 py-4">
-        <p className="text-xs font-medium">Workstation copy</p>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Resident files stay on this machine. Reports use {CLIENT_TOKEN} and{" "}
-          {AGENT_TOKEN}.
+      <div className="border-t border-white/10 px-5 py-4">
+        <p className="text-xs font-semibold">On this workstation</p>
+        <p className="mt-1 text-xs leading-5 text-indigo-100/75">
+          Profile, managing agents, rent settings, and resident files are stored in local SQLite, with a browser copy in localStorage.
         </p>
       </div>
     </div>
   )
 }
 
-function FileSelect() {
-  const { files, file, setFileId } = useWorkbench()
-  if (!file) {
-    return (
-      <p className="text-sm text-muted-foreground">No resident file in this project</p>
-    )
-  }
-
-  return (
-    <Select
-      value={file.id}
-      onValueChange={(value) => {
-        if (typeof value === "string") setFileId(value)
-      }}
-    >
-      <SelectTrigger
-        className="w-full min-w-0 bg-background sm:w-72"
-        aria-label="Active resident file"
-      >
-        <SelectValue>
-          {(value) => {
-            const selected = files.find((item) => item.id === value)
-            return selected
-              ? `${selected.reference} · ${selected.managingAgent}`
-              : "Select a file"
-          }}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {files.map((item) => (
-          <SelectItem key={item.id} value={item.id}>
-            {item.reference} · {item.managingAgent}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
-
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { secureMode, file, project } = useWorkbench()
+  const { profile, saving, error, clearError } = useWorkbench()
   const [menuOpen, setMenuOpen] = useState(false)
+  const name = profile.name.trim()
+  const role = profile.role.trim()
+  const mark = initials(name)
 
   return (
-    <div className="flex h-svh overflow-hidden bg-background">
-      <aside className="hidden w-64 shrink-0 border-r border-sidebar-border lg:block">
+    <div className="flex h-svh overflow-hidden bg-[#f3f5fb]">
+      <aside className="hidden w-72 shrink-0 lg:block">
         <SidebarNav />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="z-20 border-b border-border bg-card">
+        <header className="z-20 border-b border-slate-200 bg-white">
+          <div className="h-1 bg-gradient-to-r from-[#0073ea] via-[#a25ddc] to-[#00c875]" />
           <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-6">
             <div className="flex items-center gap-3">
               <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
@@ -174,7 +114,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   <Menu />
                 </SheetTrigger>
-                <SheetContent side="left" className="w-72 p-0 sm:max-w-xs">
+                <SheetContent side="left" className="w-72 bg-[#1c1f4a] p-0 text-white sm:max-w-xs">
                   <SheetHeader className="sr-only">
                     <SheetTitle>Navigation</SheetTitle>
                   </SheetHeader>
@@ -182,82 +122,73 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </SheetContent>
               </Sheet>
               <div className="min-w-0">
-                <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
-                  Active context
+                <p className="text-[11px] font-bold tracking-[0.14em] text-[#0073ea] uppercase">
+                  Client RP
                 </p>
-                <p className="truncate text-sm font-medium">
-                  {project.clientLabel}
-                  <span className="px-1.5 text-muted-foreground">/</span>
-                  {AGENT_TOKEN}
-                </p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {project.name}
-                  {file?.managingAgent ? ` · ${file.managingAgent}` : ""}
+                <p className="truncate text-sm font-semibold text-[#1c1f4a]">
+                  {clientLabel(profile.defaultClientRpName)}
                 </p>
               </div>
             </div>
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
-              <FileSelect />
-              <div className="flex items-center justify-between gap-2 sm:justify-start">
-                <div
-                  className={cn(
-                    "inline-flex h-8 items-center gap-2 rounded-full px-3 text-xs font-medium ring-1 ring-inset",
-                    secureMode
-                      ? "bg-emerald-50 text-emerald-800 ring-emerald-600/15"
-                      : "bg-amber-50 text-amber-900 ring-amber-600/20",
-                  )}
+            <div className="flex items-center justify-between gap-4 sm:justify-end">
+              <span
+                className={cn(
+                  "inline-flex h-8 items-center rounded-full px-3 text-xs font-bold whitespace-nowrap",
+                  saving ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-800",
+                )}
+              >
+                {saving ? "Saving…" : "Saved on this workstation"}
+              </span>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className="inline-flex h-10 items-center gap-2 rounded-lg px-1.5 text-left hover:bg-slate-50"
+                  aria-label="Your profile"
                 >
-                  <span
-                    className={cn(
-                      "size-1.5 rounded-full",
-                      secureMode ? "bg-emerald-500" : "bg-amber-500",
-                    )}
-                  />
-                  {secureMode
-                    ? "Local Secure Mode: Active"
-                    : "Local Secure Mode: Inactive"}
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    className="inline-flex h-10 items-center gap-2 rounded-lg px-1.5 text-left hover:bg-muted"
-                    aria-label="User profile"
-                  >
-                    <Avatar>
-                      <AvatarFallback className="bg-primary text-xs text-primary-foreground">
-                        AO
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="hidden min-w-0 sm:block">
-                      <span className="block text-sm leading-4 font-medium">
-                        Amara Okonkwo
-                      </span>
-                      <span className="block text-xs text-muted-foreground">
-                        Head of Internal Audit
-                      </span>
+                  <Avatar>
+                    <AvatarFallback className="bg-[#0073ea] text-xs font-bold text-white">
+                      {mark || <UserRound className="size-4" />}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="hidden min-w-0 sm:block">
+                    <span className="block max-w-48 truncate text-sm leading-4 font-semibold text-[#1c1f4a]">
+                      {name || "Add your name"}
                     </span>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-64">
-                    <DropdownMenuGroup>
-                      <DropdownMenuLabel>Local session</DropdownMenuLabel>
-                      <div className="px-1.5 py-1.5 text-sm">
-                        <p className="font-medium">Amara Okonkwo</p>
-                        <p className="text-muted-foreground">
-                          Head of Internal Audit
-                        </p>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          amara.okonkwo@audit.local
-                        </p>
-                      </div>
-                    </DropdownMenuGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+                    <span className="block max-w-48 truncate text-xs text-slate-500">
+                      {role || "Add your role in settings"}
+                    </span>
+                  </span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-72">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Your profile</DropdownMenuLabel>
+                    <div className="px-2 py-2 text-sm">
+                      <p className="font-semibold">{name || "Name not set"}</p>
+                      <p className="text-slate-500">{role || "Role not set"}</p>
+                      <p className="mt-2 text-xs text-slate-500">
+                        {profile.email.trim() || "Email not set"}
+                      </p>
+                      <Link
+                        href="/settings"
+                        className="mt-3 inline-flex text-sm font-semibold text-[#0073ea] underline-offset-4 hover:underline"
+                      >
+                        Edit in Workspace Settings
+                      </Link>
+                    </div>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
+          {error ? (
+            <div className="flex items-center justify-between gap-4 bg-rose-50 px-4 py-2 text-sm text-rose-800 lg:px-6">
+              <p>{error}</p>
+              <button type="button" className="font-semibold whitespace-nowrap" onClick={clearError}>
+                Dismiss
+              </button>
+            </div>
+          ) : null}
         </header>
-        <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
-          {children}
-        </main>
+        <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
       </div>
     </div>
   )

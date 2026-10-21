@@ -1,10 +1,9 @@
-import type { Metadata } from "next"
-import { CaseloadView } from "@/components/workbench/caseload-view"
+import { CaseloadBoard } from "@/components/workbench/caseload-board"
 
-export const metadata: Metadata = {
-  title: "Audit project",
+export const metadata = {
+  title: "Caseload CRM Board",
 }
 
-export default function HomePage() {
-  return <CaseloadView />
+export default function Page() {
+  return <CaseloadBoard />
 }
