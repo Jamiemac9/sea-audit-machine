@@ -3,200 +3,328 @@
 import {
   createContext,
   useContext,
-  useMemo,
   useState,
   type ReactNode,
 } from "react"
 import {
-  assuranceForScore,
-  averageScore,
-  clients,
-  inScope,
-  managingAgents,
-  seedActivities,
+  createResidentFile,
+  referenceFromName,
+  seedFiles,
   seedProjects,
-  seedRemediations,
-  type AuditActivity,
+  seedQuestions,
   type AuditProject,
-  type RemediationCall,
-} from "@/lib/audit"
-
-type NewProjectInput = {
-  name: string
-  schemeId: string
-  managingAgentId: string
-  filesAudited: number
-  complianceScore: number
-}
-
-type UploadInput = {
-  projectId: string
-  fileNames: string[]
-}
+} from "@/lib/caseload"
+import { CLIENT_TOKEN, type WrCode } from "@/lib/documents"
+import type { AuditStatus, ResidentFile } from "@/lib/rating"
+import {
+  standardQuestions,
+  type RubricMark,
+  type RubricQuestion,
+  type RubricScore,
+} from "@/lib/rubric"
 
 type WorkbenchContextValue = {
-  clientId: string
-  schemeId: string
-  setClientId: (clientId: string) => void
-  setSchemeId: (schemeId: string) => void
+  projects: AuditProject[]
+  projectId: string
+  project: AuditProject
+  setProjectId: (projectId: string) => void
+  updateProject: (projectId: string, patch: Partial<AuditProject>) => void
+  addProject: () => void
+  questions: RubricQuestion[]
+  updateQuestion: (questionId: string, prompt: string) => void
+  restoreQuestion: (questionId: string) => void
+  addQuestion: (projectId: string, prompt: string) => void
+  removeQuestion: (questionId: string) => void
+  files: ResidentFile[]
+  projectFiles: ResidentFile[]
+  fileId: string
+  file: ResidentFile | null
+  setFileId: (fileId: string) => void
+  updateFile: (fileId: string, patch: Partial<ResidentFile>) => void
+  setDocumentReceived: (fileId: string, code: WrCode, present: boolean) => void
+  setStatus: (fileId: string, status: AuditStatus) => void
+  setMark: (
+    fileId: string,
+    questionId: string,
+    patch: Partial<RubricMark>,
+  ) => void
+  signOff: (fileId: string) => void
+  addUploadedFiles: (
+    projectId: string,
+    uploads: { name: string; text: string }[],
+  ) => void
+  reassignFile: (fileId: string, projectId: string) => void
+  removeFile: (fileId: string) => void
   secureMode: boolean
   setSecureMode: (active: boolean) => void
-  clientName: string
-  schemeName: string
-  schemes: { id: string; name: string }[]
+}
+
+type WorkbenchState = {
   projects: AuditProject[]
-  activities: AuditActivity[]
-  remediations: RemediationCall[]
-  metrics: {
-    filesAudited: number
-    averageScore: number | null
-    activeAgents: number
-    pendingCalls: number
-    projectCount: number
-  }
-  addProject: (input: NewProjectInput) => void
-  uploadBatch: (input: UploadInput) => void
+  projectId: string
+  questions: RubricQuestion[]
+  files: ResidentFile[]
+  fileId: string
 }
 
 const WorkbenchContext = createContext<WorkbenchContextValue | null>(null)
 
 export function WorkbenchProvider({ children }: { children: ReactNode }) {
-  const [projects, setProjects] = useState(seedProjects)
-  const [activities, setActivities] = useState(seedActivities)
-  const [remediations] = useState(seedRemediations)
-  const [clientId, setClientIdState] = useState(clients[0].id)
-  const [schemeId, setSchemeId] = useState("all")
+  const [state, setState] = useState<WorkbenchState>({
+    projects: seedProjects,
+    projectId: seedProjects[0].id,
+    questions: seedQuestions,
+    files: seedFiles,
+    fileId: seedFiles[0].id,
+  })
   const [secureMode, setSecureMode] = useState(true)
+  const project =
+    state.projects.find((item) => item.id === state.projectId) ??
+    state.projects[0]
+  const file = state.files.find((item) => item.id === state.fileId) ?? null
+  const projectFiles = state.files.filter((item) => item.projectId === project.id)
 
-  const client = clients.find((item) => item.id === clientId) ?? clients[0]
-
-  const scopedProjects = useMemo(
-    () =>
-      inScope(projects, client.id, schemeId).sort((a, b) =>
-        a.updatedAt < b.updatedAt ? 1 : -1
-      ),
-    [projects, client.id, schemeId]
-  )
-  const scopedActivities = useMemo(
-    () =>
-      inScope(activities, client.id, schemeId).sort((a, b) =>
-        a.at < b.at ? 1 : -1
-      ),
-    [activities, client.id, schemeId]
-  )
-  const scopedCalls = useMemo(
-    () => inScope(remediations, client.id, schemeId),
-    [remediations, client.id, schemeId]
-  )
-
-  const metrics = useMemo(() => {
-    const activeAgentIds = new Set(
-      scopedProjects
-        .filter((project) => project.status !== "Closed")
-        .map((project) => project.managingAgentId)
-    )
-    return {
-      filesAudited: scopedProjects.reduce(
-        (sum, project) => sum + project.filesAudited,
-        0
-      ),
-      averageScore: averageScore(scopedProjects),
-      activeAgents: activeAgentIds.size,
-      pendingCalls: scopedCalls.filter((call) => call.status === "Open").length,
-      projectCount: scopedProjects.length,
-    }
-  }, [scopedProjects, scopedCalls])
-
-  function setClientId(nextClientId: string) {
-    setClientIdState(nextClientId)
-    setSchemeId("all")
+  function setProjectId(projectId: string) {
+    setState((current) => {
+      const inProject = current.files.filter((item) => item.projectId === projectId)
+      const keep = inProject.some((item) => item.id === current.fileId)
+      return {
+        ...current,
+        projectId,
+        fileId: keep ? current.fileId : (inProject[0]?.id ?? ""),
+      }
+    })
   }
 
-  function addProject(input: NewProjectInput) {
-    const now = new Date().toISOString()
-    const id = `p-${crypto.randomUUID()}`
-    const project: AuditProject = {
-      id,
-      name: input.name.trim(),
-      clientId: client.id,
-      schemeId: input.schemeId,
-      managingAgentId: input.managingAgentId,
-      filesAudited: input.filesAudited,
-      complianceScore: input.complianceScore,
-      assurance: assuranceForScore(input.complianceScore),
-      status: "Fieldwork",
-      updatedAt: now,
-    }
-    setProjects((current) => [project, ...current])
-    setActivities((current) => [
-      {
-        id: `a-${crypto.randomUUID()}`,
-        clientId: client.id,
-        schemeId: input.schemeId,
-        projectId: id,
-        title: "Audit project opened",
-        detail: `${project.name} was added on this workstation.`,
-        at: now,
-      },
+  function updateProject(projectId: string, patch: Partial<AuditProject>) {
+    setState((current) => ({
       ...current,
-    ])
+      projects: current.projects.map((item) =>
+        item.id === projectId ? { ...item, ...patch } : item,
+      ),
+    }))
   }
 
-  function uploadBatch(input: UploadInput) {
-    const project = projects.find((item) => item.id === input.projectId)
-    if (!project || input.fileNames.length === 0) return
-    const now = new Date().toISOString()
-    setProjects((current) =>
-      current.map((item) =>
-        item.id === project.id
+  function addProject() {
+    const id = `project-${crypto.randomUUID()}`
+    const nextProject: AuditProject = {
+      id,
+      name: "New audit project",
+      clientLabel: CLIENT_TOKEN,
+    }
+    setState((current) => ({
+      ...current,
+      projects: [...current.projects, nextProject],
+      questions: [...current.questions, ...standardQuestions(id)],
+      projectId: id,
+      fileId: "",
+    }))
+  }
+
+  function updateQuestion(questionId: string, prompt: string) {
+    setState((current) => ({
+      ...current,
+      questions: current.questions.map((item) =>
+        item.id === questionId ? { ...item, prompt } : item,
+      ),
+    }))
+  }
+
+  function restoreQuestion(questionId: string) {
+    setState((current) => ({
+      ...current,
+      questions: current.questions.map((item) =>
+        item.id === questionId ? { ...item, prompt: item.defaultPrompt } : item,
+      ),
+    }))
+  }
+
+  function addQuestion(projectId: string, prompt: string) {
+    const question: RubricQuestion = {
+      id: `${projectId}:custom-${crypto.randomUUID()}`,
+      projectId,
+      prompt,
+      defaultPrompt: prompt,
+      source: "custom",
+      wrCode: null,
+    }
+    setState((current) => ({
+      ...current,
+      questions: [...current.questions, question],
+    }))
+  }
+
+  function removeQuestion(questionId: string) {
+    setState((current) => ({
+      ...current,
+      questions: current.questions.filter(
+        (item) => item.id !== questionId || item.source !== "custom",
+      ),
+    }))
+  }
+
+  function setFileId(fileId: string) {
+    setState((current) => {
+      const next = current.files.find((item) => item.id === fileId)
+      return {
+        ...current,
+        fileId,
+        projectId: next?.projectId ?? current.projectId,
+      }
+    })
+  }
+
+  function updateFile(fileId: string, patch: Partial<ResidentFile>) {
+    setState((current) => ({
+      ...current,
+      files: current.files.map((item) =>
+        item.id === fileId ? { ...item, ...patch, signedOff: false } : item,
+      ),
+    }))
+  }
+
+  function setDocumentReceived(fileId: string, code: WrCode, present: boolean) {
+    setState((current) => ({
+      ...current,
+      files: current.files.map((item) =>
+        item.id === fileId
           ? {
               ...item,
-              filesAudited: item.filesAudited + input.fileNames.length,
-              updatedAt: now,
+              signedOff: false,
+              received: { ...item.received, [code]: present },
             }
-          : item
-      )
-    )
-    setActivities((current) => [
-      {
-        id: `a-${crypto.randomUUID()}`,
-        clientId: project.clientId,
-        schemeId: project.schemeId,
-        projectId: project.id,
-        title: "Batch uploaded",
-        detail: `${input.fileNames.length} file${input.fileNames.length === 1 ? "" : "s"} added to ${project.name}.`,
-        at: now,
-      },
-      ...current,
-    ])
+          : item,
+      ),
+    }))
   }
 
-  const schemeName =
-    schemeId === "all"
-      ? "All schemes"
-      : (client.schemes.find((scheme) => scheme.id === schemeId)?.name ??
-        "All schemes")
+  function setStatus(fileId: string, status: AuditStatus) {
+    updateFile(fileId, { status })
+  }
 
-  const value: WorkbenchContextValue = {
-    clientId: client.id,
-    schemeId,
-    setClientId,
-    setSchemeId,
-    secureMode,
-    setSecureMode,
-    clientName: client.name,
-    schemeName,
-    schemes: client.schemes,
-    projects: scopedProjects,
-    activities: scopedActivities,
-    remediations: scopedCalls,
-    metrics,
-    addProject,
-    uploadBatch,
+  function setMark(
+    fileId: string,
+    questionId: string,
+    patch: Partial<RubricMark>,
+  ) {
+    setState((current) => ({
+      ...current,
+      files: current.files.map((item) => {
+        if (item.id !== fileId) return item
+        const existing = item.marks[questionId] ?? { score: "" as RubricScore, note: "" }
+        return {
+          ...item,
+          signedOff: false,
+          marks: {
+            ...item.marks,
+            [questionId]: { ...existing, ...patch },
+          },
+        }
+      }),
+    }))
+  }
+
+  function signOff(fileId: string) {
+    setState((current) => ({
+      ...current,
+      files: current.files.map((item) =>
+        item.id === fileId
+          ? { ...item, signedOff: true, status: "Audit Complete" }
+          : item,
+      ),
+    }))
+  }
+
+  function addUploadedFiles(
+    projectId: string,
+    uploads: { name: string; text: string }[],
+  ) {
+    setState((current) => {
+      const taken = new Set(current.files.map((item) => item.reference))
+      const created = uploads.map((upload) => {
+        const base = referenceFromName(upload.name)
+        let reference = base
+        let suffix = 2
+        while (taken.has(reference)) {
+          reference = `${base}-${suffix}`
+          suffix += 1
+        }
+        taken.add(reference)
+        return createResidentFile({
+          projectId,
+          reference,
+          ocrText: upload.text,
+        })
+      })
+      return {
+        ...current,
+        projectId,
+        files: [...created, ...current.files],
+        fileId: created[0]?.id ?? current.fileId,
+      }
+    })
+  }
+
+  function reassignFile(fileId: string, projectId: string) {
+    setState((current) => {
+      const files = current.files.map((item) =>
+        item.id === fileId ? { ...item, projectId, signedOff: false } : item,
+      )
+      const active = files.find((item) => item.id === current.fileId)
+      const activeStillInProject = active?.projectId === current.projectId
+      const fallback = files.find((item) => item.projectId === current.projectId)
+      return {
+        ...current,
+        files,
+        fileId: activeStillInProject ? current.fileId : (fallback?.id ?? ""),
+      }
+    })
+  }
+
+  function removeFile(fileId: string) {
+    setState((current) => {
+      const files = current.files.filter((item) => item.id !== fileId)
+      if (current.fileId !== fileId) return { ...current, files }
+      const fallback = files.find((item) => item.projectId === current.projectId)
+      return {
+        ...current,
+        files,
+        fileId: fallback?.id ?? "",
+      }
+    })
   }
 
   return (
-    <WorkbenchContext.Provider value={value}>
+    <WorkbenchContext.Provider
+      value={{
+        projects: state.projects,
+        projectId: project.id,
+        project,
+        setProjectId,
+        updateProject,
+        addProject,
+        questions: state.questions,
+        updateQuestion,
+        restoreQuestion,
+        addQuestion,
+        removeQuestion,
+        files: state.files,
+        projectFiles,
+        fileId: file?.id ?? "",
+        file,
+        setFileId,
+        updateFile,
+        setDocumentReceived,
+        setStatus,
+        setMark,
+        signOff,
+        addUploadedFiles,
+        reassignFile,
+        removeFile,
+        secureMode,
+        setSecureMode,
+      }}
+    >
       {children}
     </WorkbenchContext.Provider>
   )
@@ -209,5 +337,3 @@ export function useWorkbench() {
   }
   return value
 }
-
-export { clients, managingAgents }

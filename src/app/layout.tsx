@@ -16,11 +16,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "SEA Audit",
-    template: "%s · SEA Audit",
+    default: "Seaaudit",
+    template: "%s · Seaaudit",
   },
   description:
-    "Local internal audit workbench for housing compliance, managing agents, and statutory assurance.",
+    "Local workbench for auditing resident files WR-01 to WR-22. Client and managing-agent names stay as tokens.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

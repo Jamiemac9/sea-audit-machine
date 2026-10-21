@@ -8,10 +8,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { AGENT_TOKEN, CLIENT_TOKEN } from "@/lib/documents"
 import { useWorkbench } from "@/lib/workbench"
 
 export function SettingsView() {
-  const { secureMode, setSecureMode, clientName, schemeName } = useWorkbench()
+  const { secureMode, setSecureMode, file, project } = useWorkbench()
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -21,7 +22,7 @@ export function SettingsView() {
         </p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Local session controls for the internal audit workbench.
+          Local session controls for the Seaaudit internal workbench.
         </p>
       </div>
 
@@ -29,8 +30,8 @@ export function SettingsView() {
         <CardHeader>
           <CardTitle>Local secure mode</CardTitle>
           <CardDescription>
-            Keeps evidence, scores, and reports on this workstation. The header
-            shows whether the mode is active.
+            Keeps extracts, scores, and the return zip on this workstation. The
+            header shows whether the mode is active.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -77,17 +78,22 @@ export function SettingsView() {
 
       <Card className="shadow-sm ring-foreground/8">
         <CardHeader>
-          <CardTitle>Active context</CardTitle>
+          <CardTitle>Active file</CardTitle>
           <CardDescription>
-            Change the client or scheme from the header. It filters projects,
-            agent performance, and the report export together.
+            Reports name {CLIENT_TOKEN} and {AGENT_TOKEN}. Chantry Housing and
+            Best Choice Housing appear only as mock training agents.
           </CardDescription>
         </CardHeader>
         <CardContent className="text-sm">
           <p className="font-medium">
-            {clientName}
+            {project.name}
             <span className="px-1.5 text-muted-foreground">/</span>
-            {schemeName}
+            {project.clientLabel}
+          </p>
+          <p className="mt-2 text-muted-foreground">
+            {file
+              ? `${file.reference} · mock training agent ${file.managingAgent || "not set"}`
+              : "No resident file is open."}
           </p>
         </CardContent>
       </Card>

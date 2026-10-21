@@ -5,12 +5,14 @@ import { usePathname } from "next/navigation"
 import { useState } from "react"
 import {
   Archive,
-  FolderKanban,
+  ClipboardList,
+  FileSearch,
+  Files,
+  LayoutGrid,
+  ListChecks,
   Menu,
-  Scale,
   Settings,
   ShieldCheck,
-  Users,
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -35,14 +37,17 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { clients, useWorkbench } from "@/lib/workbench"
+import { AGENT_TOKEN, CLIENT_TOKEN } from "@/lib/documents"
+import { useWorkbench } from "@/lib/workbench"
 import { cn } from "cn"
 
 const navigation = [
-  { href: "/", label: "Projects", icon: FolderKanban },
-  { href: "/managing-agents", label: "Managing Agents", icon: Users },
-  { href: "/audit-rubric", label: "Audit Rubric", icon: Scale },
-  { href: "/reports", label: "Reports Archive", icon: Archive },
+  { href: "/", label: "Audit project", icon: ClipboardList },
+  { href: "/audit", label: "Resident file", icon: FileSearch },
+  { href: "/documents", label: "Document suite", icon: Files },
+  { href: "/risk", label: "Risk matrix", icon: LayoutGrid },
+  { href: "/rubric", label: "Rubric settings", icon: ListChecks },
+  { href: "/reports", label: "Report package", icon: Archive },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 
@@ -57,10 +62,10 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
         </div>
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold tracking-tight">
-            SEA Audit
+            Seaaudit
           </p>
           <p className="truncate text-xs text-muted-foreground">
-            Internal Audit Workbench
+            Internal Workbench
           </p>
         </div>
       </div>
@@ -84,7 +89,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                 "flex items-center gap-3 rounded-lg border-l-2 px-3 py-2 text-sm transition-colors",
                 active
                   ? "border-primary bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                  : "border-transparent text-sidebar-foreground/80 hover:bg-muted hover:text-foreground"
+                  : "border-transparent text-sidebar-foreground/80 hover:bg-muted hover:text-foreground",
               )}
             >
               <Icon className="size-4" />
@@ -96,66 +101,55 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
       <div className="border-t border-sidebar-border px-5 py-4">
         <p className="text-xs font-medium">Workstation copy</p>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Audit files remain on this machine.
+          Resident files stay on this machine. Reports use {CLIENT_TOKEN} and{" "}
+          {AGENT_TOKEN}.
         </p>
       </div>
     </div>
   )
 }
 
-function ContextSelects() {
-  const { clientId, schemeId, setClientId, setSchemeId, schemes } =
-    useWorkbench()
+function FileSelect() {
+  const { files, file, setFileId } = useWorkbench()
+  if (!file) {
+    return (
+      <p className="text-sm text-muted-foreground">No resident file in this project</p>
+    )
+  }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Select
-        value={clientId}
-        onValueChange={(value) => {
-          if (typeof value === "string") setClientId(value)
-        }}
+    <Select
+      value={file.id}
+      onValueChange={(value) => {
+        if (typeof value === "string") setFileId(value)
+      }}
+    >
+      <SelectTrigger
+        className="w-full min-w-0 bg-background sm:w-72"
+        aria-label="Active resident file"
       >
-        <SelectTrigger
-          className="w-full bg-background sm:w-60"
-          aria-label="Active client"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {clients.map((client) => (
-            <SelectItem key={client.id} value={client.id}>
-              {client.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Select
-        value={schemeId}
-        onValueChange={(value) => {
-          if (typeof value === "string") setSchemeId(value)
-        }}
-      >
-        <SelectTrigger
-          className="w-full bg-background sm:w-48"
-          aria-label="Active scheme"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All schemes</SelectItem>
-          {schemes.map((scheme) => (
-            <SelectItem key={scheme.id} value={scheme.id}>
-              {scheme.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
+        <SelectValue>
+          {(value) => {
+            const selected = files.find((item) => item.id === value)
+            return selected
+              ? `${selected.reference} · ${selected.managingAgent}`
+              : "Select a file"
+          }}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {files.map((item) => (
+          <SelectItem key={item.id} value={item.id}>
+            {item.reference} · {item.managingAgent}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { secureMode, clientName, schemeName } = useWorkbench()
+  const { secureMode, file, project } = useWorkbench()
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
@@ -192,66 +186,72 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   Active context
                 </p>
                 <p className="truncate text-sm font-medium">
-                  {clientName}
+                  {project.clientLabel}
                   <span className="px-1.5 text-muted-foreground">/</span>
-                  {schemeName}
+                  {AGENT_TOKEN}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {project.name}
+                  {file?.managingAgent ? ` · ${file.managingAgent}` : ""}
                 </p>
               </div>
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
-              <ContextSelects />
-              <div
-                className={cn(
-                  "inline-flex h-8 items-center gap-2 rounded-full px-3 text-xs font-medium ring-1 ring-inset",
-                  secureMode
-                    ? "bg-emerald-50 text-emerald-800 ring-emerald-600/15"
-                    : "bg-amber-50 text-amber-900 ring-amber-600/20"
-                )}
-              >
-                <span
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
+              <FileSelect />
+              <div className="flex items-center justify-between gap-2 sm:justify-start">
+                <div
                   className={cn(
-                    "size-1.5 rounded-full",
-                    secureMode ? "bg-emerald-500" : "bg-amber-500"
+                    "inline-flex h-8 items-center gap-2 rounded-full px-3 text-xs font-medium ring-1 ring-inset",
+                    secureMode
+                      ? "bg-emerald-50 text-emerald-800 ring-emerald-600/15"
+                      : "bg-amber-50 text-amber-900 ring-amber-600/20",
                   )}
-                />
-                {secureMode
-                  ? "Local Secure Mode: Active"
-                  : "Local Secure Mode: Inactive"}
-              </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  className="inline-flex h-10 items-center gap-2 rounded-lg px-1.5 text-left hover:bg-muted"
-                  aria-label="User profile"
                 >
-                  <Avatar>
-                    <AvatarFallback className="bg-primary text-xs text-primary-foreground">
-                      AO
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="hidden min-w-0 sm:block">
-                    <span className="block text-sm leading-4 font-medium">
-                      Amara Okonkwo
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      Head of Internal Audit
-                    </span>
-                  </span>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-64">
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel>Local session</DropdownMenuLabel>
-                    <div className="px-1.5 py-1.5 text-sm">
-                      <p className="font-medium">Amara Okonkwo</p>
-                      <p className="text-muted-foreground">
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full",
+                      secureMode ? "bg-emerald-500" : "bg-amber-500",
+                    )}
+                  />
+                  {secureMode
+                    ? "Local Secure Mode: Active"
+                    : "Local Secure Mode: Inactive"}
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    className="inline-flex h-10 items-center gap-2 rounded-lg px-1.5 text-left hover:bg-muted"
+                    aria-label="User profile"
+                  >
+                    <Avatar>
+                      <AvatarFallback className="bg-primary text-xs text-primary-foreground">
+                        AO
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="hidden min-w-0 sm:block">
+                      <span className="block text-sm leading-4 font-medium">
+                        Amara Okonkwo
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
                         Head of Internal Audit
-                      </p>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        amara.okonkwo@audit.local
-                      </p>
-                    </div>
-                  </DropdownMenuGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                      </span>
+                    </span>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64">
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel>Local session</DropdownMenuLabel>
+                      <div className="px-1.5 py-1.5 text-sm">
+                        <p className="font-medium">Amara Okonkwo</p>
+                        <p className="text-muted-foreground">
+                          Head of Internal Audit
+                        </p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          amara.okonkwo@audit.local
+                        </p>
+                      </div>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </div>
         </header>
