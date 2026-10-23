@@ -32,6 +32,19 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# resident data — NEVER commit any of this.
+# Document bytes live outside the repo at AUDIT_DATA_DIR. These patterns are a
+# second line of defence in case that is ever misconfigured.
+/data/
+*.sqlite
+*.sqlite-journal
+*.db
+*.pdf
+*.docx
+*.doc
+*.xlsx
 
 # vercel
 .vercel

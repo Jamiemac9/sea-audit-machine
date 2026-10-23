@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppShell } from "@/components/workbench/app-shell";
-import { WorkbenchProvider } from "@/lib/workbench";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,23 +15,21 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "SEA Audit",
-    template: "%s · SEA Audit",
+    default: "Support Audit",
+    template: "%s · Support Audit",
   },
   description:
-    "Local internal audit workbench for housing compliance, managing agents, and statutory assurance.",
+    "Local workbench for resident-level supported housing audit: ingest, extract, check, report.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="en"
+      lang="en-GB"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full">
-        <WorkbenchProvider>
-          <AppShell>{children}</AppShell>
-        </WorkbenchProvider>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
