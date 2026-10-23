@@ -116,7 +116,7 @@ export function RubricView() {
           <CardHeader className="border-b">
             <CardTitle>Document codes recognised</CardTitle>
             <CardDescription>
-              The Windrush Support Pack scheme. These are one provider&apos;s
+              The default scheme. These are one provider&apos;s internal
               references, not a sector standard — commissioned work is audited
               against the client&apos;s own pack.
             </CardDescription>

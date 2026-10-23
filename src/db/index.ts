@@ -46,10 +46,28 @@ function create() {
   return drizzle(sqlite, { schema })
 }
 
-// Next.js reloads modules in development; without this the database handle is
-// reopened on every change until the process runs out of file descriptors.
-export const db = globalThis.__auditDb ?? create()
-if (process.env.NODE_ENV !== "production") globalThis.__auditDb = db
+function connection() {
+  // Next.js reloads modules in development; without this the database handle is
+  // reopened on every change until the process runs out of file descriptors.
+  if (!globalThis.__auditDb) {
+    const created = create()
+    if (process.env.NODE_ENV === "production") return created
+    globalThis.__auditDb = created
+  }
+  return globalThis.__auditDb
+}
+
+/**
+ * Opened on first use rather than at import time. `next build` imports every
+ * route module to collect its configuration, so connecting eagerly would make
+ * the build fail on a fresh checkout before .env.local exists — a confusing
+ * error for something that has nothing to do with the database.
+ */
+export const db = new Proxy({} as ReturnType<typeof create>, {
+  get(_target, property, receiver) {
+    return Reflect.get(connection(), property, receiver)
+  },
+})
 
 export function databaseExists() {
   return existsSync(databaseFile())

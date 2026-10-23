@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { connection } from "next/server"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -49,6 +50,10 @@ export default async function ResidentFilePage({
 }: {
   params: Promise<{ residentFileId: string }>
 }) {
+  // Marks this render as request-time. Without it the page is statically
+  // prerendered and the database contents are baked into the build.
+  await connection()
+
   const { residentFileId } = await params
   const detail = await getResidentFile(residentFileId)
   if (!detail) notFound()

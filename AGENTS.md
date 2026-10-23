@@ -23,12 +23,18 @@ stream only.
 **Resident data never enters this repository.** No real names, addresses, document text or
 files in fixtures, tests, seeds, commit messages or comments. Document bytes are written to
 `AUDIT_DATA_DIR`, which is outside the repo. Seed and test data is synthetic only — see
-`prisma/seed.ts`.
+`scripts/seed.ts`.
+
+**No day-job material.** This repository is public-facing work product. Do not name the
+employing provider, its managing agents, its rounds or its residents anywhere in the code,
+comments, UI copy or commit messages. The `WR-` document codes are kept as a configurable
+default scheme and are not attributed.
 
 **UK English throughout**, in code, comments, UI copy and report output.
 
-Stack: Next.js (App Router) + Prisma + SQLite. Document parsing is Node-only; do not add a
-Python process. Keep route handlers thin and put logic in `src/lib/`.
+Stack: Next.js (App Router) + Drizzle + SQLite (better-sqlite3). Document parsing is
+Node-only; do not add a Python process. Keep route handlers thin and put logic in
+`src/lib/`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

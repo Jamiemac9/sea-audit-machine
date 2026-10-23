@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { connection } from "next/server"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { AlertTriangle, ScanLine } from "lucide-react"
@@ -44,6 +45,10 @@ export default async function RoundPage({
 }: {
   params: Promise<{ roundId: string }>
 }) {
+  // Marks this render as request-time. Without it the page is statically
+  // prerendered and the database contents are baked into the build.
+  await connection()
+
   const { roundId } = await params
   const detail = await getRoundDetail(roundId)
   if (!detail) notFound()

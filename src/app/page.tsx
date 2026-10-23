@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { connection } from "next/server"
 import Link from "next/link"
 import {
   Card,
@@ -37,6 +38,10 @@ export const metadata: Metadata = { title: "Rounds" }
 export const instant = false
 
 export default async function HomePage() {
+  // Marks this render as request-time. Without it the page is statically
+  // prerendered and the database contents are baked into the build.
+  await connection()
+
   const agents = await listAgentsWithRounds()
 
   return (

@@ -130,9 +130,11 @@ export function formatBytes(bytes: number) {
 }
 
 /**
- * The Windrush Support Pack codes the classifier recognises. SEAaudit work uses
- * the client's own pack instead — this list is the Windrush scheme only and is
- * not a sector standard.
+ * The document codes the classifier recognises by default.
+ *
+ * These are one provider's internal references, not a sector standard. A
+ * commissioned audit is run against the client's own pack, so this list is a
+ * configurable default rather than something to build rules around.
  */
 export const WR_CODES = [
   { code: "WR-01", name: "Initial assessment" },
