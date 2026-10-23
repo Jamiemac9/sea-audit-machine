@@ -137,21 +137,32 @@ export function formatBytes(bytes: number) {
  * configurable default rather than something to build rules around.
  */
 export const WR_CODES = [
-  { code: "WR-01", name: "Initial assessment" },
-  { code: "WR-02", name: "Licence agreement" },
-  { code: "WR-03", name: "Personal details and emergency contact" },
-  { code: "WR-05", name: "Missing person form" },
-  { code: "WR-08", name: "Risk matrix" },
-  { code: "WR-09", name: "Risk assessment" },
-  { code: "WR-10", name: "Risk management plan" },
+  { code: "WR-01", name: "Initial needs assessment" },
+  { code: "WR-02", name: "Excluded licence agreement" },
+  { code: "WR-03", name: "Fire safety" },
+  { code: "WR-04", name: "Housing benefit authorisation" },
+  { code: "WR-05", name: "Missing person" },
+  { code: "WR-06", name: "Nil income" },
+  { code: "WR-07", name: "Service charge" },
+  // TO CONFIRM: recorded elsewhere as the scoring matrix itself rather than a
+  // review of the assessment. Does not affect classification.
+  { code: "WR-08", name: "Risk assessment review" },
+  { code: "WR-09", name: "Risk assessment and management" },
+  { code: "WR-10", name: "Staff eyes only" },
   { code: "WR-11", name: "Support plan" },
-  { code: "WR-12", name: "Review" },
-  { code: "WR-13", name: "Support session record" },
-  { code: "WR-14", name: "Contact and support log" },
-  { code: "WR-16", name: "Supporting evidence" },
-  { code: "WR-17", name: "Warning notice" },
-  { code: "WR-19", name: "Licence conditions acknowledgement" },
+  { code: "WR-12", name: "Resident review form" },
+  { code: "WR-13", name: "Support session records" },
+  { code: "WR-14", name: "Contact log" },
+  { code: "WR-15", name: "Incident form" },
+  // TO CONFIRM: the warning sequence runs 16/17/18 here, but the audit rules
+  // refer to "the WR-17 warning" as the one issued after a missed session.
+  { code: "WR-16", name: "Warning letter — first" },
+  { code: "WR-17", name: "Warning letter — second" },
+  { code: "WR-18", name: "Warning letter — final" },
+  { code: "WR-19", name: "Knowing rights" },
   { code: "WR-20", name: "Exit form" },
+  { code: "WR-21", name: "Inventory" },
+  { code: "WR-22", name: "ID check" },
 ] as const
 
 export type WrCode = (typeof WR_CODES)[number]["code"]

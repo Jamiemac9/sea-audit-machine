@@ -124,17 +124,36 @@ function detectWrCode(name: string, head: string, reasons: string[]) {
   return { value: null, confidence: 0 }
 }
 
+/**
+ * Ordered most specific first: the first pattern to match wins, so "staff eyes
+ * only" has to be tested before "risk assessment", and the bare word "review"
+ * comes last because it appears in half the pack.
+ *
+ * A warning letter is deliberately NOT mapped to a code. The pack runs first,
+ * second and final warnings as WR-16, WR-17 and WR-18, and the heading alone
+ * does not say which — so it goes to the review queue rather than being
+ * guessed. A document code in the filename still classifies it directly.
+ */
 const HEADING_HINTS: [RegExp, string, string][] = [
   [/support session record|session record/, "WR-13", "support session record"],
-  [/contact (and|&) support log/, "WR-14", "contact and support log"],
+  [/contact (and|&) support log|contact log/, "WR-14", "contact log"],
+  [/staff eyes only|staff only/, "WR-10", "staff eyes only"],
   [/support plan/, "WR-11", "support plan"],
-  [/risk management plan/, "WR-10", "risk management plan"],
-  [/risk assessment/, "WR-09", "risk assessment"],
-  [/licence agreement|license agreement/, "WR-02", "licence agreement"],
-  [/missing person/, "WR-05", "missing person form"],
-  [/initial assessment/, "WR-01", "initial assessment"],
-  [/warning (notice|letter)/, "WR-17", "warning notice"],
+  [/risk assessment review/, "WR-08", "risk assessment review"],
+  [/risk assessment/, "WR-09", "risk assessment and management"],
+  [/excluded licence|licence agreement|license agreement/, "WR-02", "excluded licence agreement"],
+  [/missing person/, "WR-05", "missing person"],
+  [/initial needs assessment|initial assessment/, "WR-01", "initial needs assessment"],
+  [/fire safety/, "WR-03", "fire safety"],
+  [/housing benefit/, "WR-04", "housing benefit authorisation"],
+  [/nil income/, "WR-06", "nil income"],
+  [/service charge/, "WR-07", "service charge"],
+  [/incident form/, "WR-15", "incident form"],
+  [/knowing (your )?rights/, "WR-19", "knowing rights"],
   [/exit form/, "WR-20", "exit form"],
+  [/\binventory\b/, "WR-21", "inventory"],
+  [/\bid check\b/, "WR-22", "ID check"],
+  [/resident review form/, "WR-12", "resident review form"],
   [/\breview\b/, "WR-12", "review"],
 ]
 

@@ -92,3 +92,59 @@ test("a name in the body is weaker evidence than one in the filename", () => {
   })
   assert.equal(result.residentFileId, "r2")
 })
+
+test("a warning letter is not guessed at, because the pack has three", () => {
+  // WR-16, WR-17 and WR-18 are first, second and final. The heading alone does
+  // not say which, so this belongs in the review queue.
+  const result = classifyDocument({
+    originalName: "warning letter.docx",
+    text: "Warning letter\n\nThis is a formal warning regarding missed sessions.",
+    residents,
+  })
+  assert.equal(result.wrCode, null, "no warning code may be inferred from a heading")
+  assert.ok(result.confidence < AUTO_ACCEPT_CONFIDENCE)
+})
+
+test("an explicit warning code in the filename still classifies", () => {
+  const result = classifyDocument({
+    originalName: "WR-18 Avery Mountjoy final warning.docx",
+    text: "Warning letter",
+    residents,
+  })
+  assert.equal(result.wrCode, "WR-18")
+})
+
+test("staff eyes only is matched before the plainer risk assessment wording", () => {
+  const result = classifyDocument({
+    originalName: "staff doc.docx",
+    text: "Staff Eyes Only\n\nRisk assessment information held for staff.",
+    residents,
+  })
+  assert.equal(result.wrCode, "WR-10")
+})
+
+test("a risk assessment review is not mistaken for the risk assessment", () => {
+  const result = classifyDocument({
+    originalName: "review doc.docx",
+    text: "Risk Assessment Review\n\nSix month review of the assessment.",
+    residents,
+  })
+  assert.equal(result.wrCode, "WR-08")
+})
+
+test("the codes added to the pack are all recognised from their headings", () => {
+  const cases: [string, string][] = [
+    ["Fire Safety checklist completed with the resident.", "WR-03"],
+    ["Housing Benefit authorisation form.", "WR-04"],
+    ["Nil Income declaration.", "WR-06"],
+    ["Service Charge breakdown.", "WR-07"],
+    ["Incident Form completed after the event.", "WR-15"],
+    ["Knowing Your Rights information sheet.", "WR-19"],
+    ["Inventory of items provided in the room.", "WR-21"],
+    ["ID Check completed at sign up.", "WR-22"],
+  ]
+  for (const [text, expected] of cases) {
+    const result = classifyDocument({ originalName: "doc.docx", text, residents })
+    assert.equal(result.wrCode, expected, `"${text}" should be ${expected}`)
+  }
+})
