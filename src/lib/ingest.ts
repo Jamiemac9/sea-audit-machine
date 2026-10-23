@@ -12,6 +12,7 @@ import { join } from "node:path"
 import { and, eq } from "drizzle-orm"
 import { auditDataDir, db } from "@/db"
 import { documentImages, documents, residentFiles } from "@/db/schema"
+import { anonymiseExtract } from "./anonymise"
 import { AUTO_ACCEPT_CONFIDENCE, classifyDocument } from "./classify"
 import { extractDocument } from "./extract"
 
@@ -123,6 +124,14 @@ export async function processDocument(documentId: string) {
       residents,
     })
 
+    // Redacted against every resident name in the round, not just this
+    // resident's — another resident's name appearing in this file is exactly
+    // the case that matters.
+    const redactedText = anonymiseExtract(extracted.text, {
+      fileName: doc.originalName,
+      names: residents.map((resident) => resident.residentName),
+    })
+
     const autoAccepted = classification.confidence >= AUTO_ACCEPT_CONFIDENCE
 
     await db
@@ -131,6 +140,7 @@ export async function processDocument(documentId: string) {
         extractionState: "DONE",
         extractionError: null,
         extractedText: extracted.text,
+        redactedText,
         pageCount: extracted.pageCount,
         docCreatedAt: extracted.docCreatedAt,
         docModifiedAt: extracted.docModifiedAt,

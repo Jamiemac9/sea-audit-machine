@@ -9,6 +9,8 @@
 
 import { readFile } from "node:fs/promises"
 import { createHash } from "node:crypto"
+import { join } from "node:path"
+import { auditDataDir } from "@/db"
 
 export type ExtractResult = {
   text: string
@@ -43,6 +45,13 @@ export function isDocx(mimeType: string, name: string) {
   )
 }
 
+const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"]
+
+export function isImage(mimeType: string, name: string) {
+  const ext = name.toLowerCase().split(".").pop() ?? ""
+  return mimeType.startsWith("image/") || IMAGE_EXTENSIONS.includes(ext)
+}
+
 export async function extractDocument(
   absolutePath: string,
   mimeType: string,
@@ -50,10 +59,52 @@ export async function extractDocument(
 ): Promise<ExtractResult> {
   if (isPdf(mimeType, originalName)) return extractPdf(absolutePath)
   if (isDocx(mimeType, originalName)) return extractDocx(absolutePath)
+  if (isImage(mimeType, originalName)) return extractImage(absolutePath)
   if (mimeType.startsWith("text/")) {
     return { ...empty, text: await readFile(absolutePath, "utf8") }
   }
   return empty
+}
+
+/**
+ * OCR for image files — a photographed or scanned page saved as PNG or JPG.
+ *
+ * This does not cover a scanned PDF. Rasterising PDF pages needs a renderer
+ * this does not have, so a PDF with no text layer is still flagged `needsOcr`
+ * and shown as not machine-checked. Exporting the page as an image is the
+ * current route for those.
+ */
+async function extractImage(absolutePath: string): Promise<ExtractResult> {
+  const text = (await recogniseImage(absolutePath)).trim()
+  return {
+    ...empty,
+    text,
+    // OCR output is a reading of the page, not the page. If it came back
+    // empty the document has not been checked, and must not look as if it has.
+    needsOcr: text.length === 0,
+  }
+}
+
+let ocrWorker: Promise<import("tesseract.js").Worker> | null = null
+
+async function recogniseImage(absolutePath: string) {
+  const { createWorker } = await import("tesseract.js")
+  // One worker, reused: starting Tesseract costs seconds and downloads a
+  // language model on first run.
+  if (!ocrWorker) {
+    ocrWorker = createWorker("eng", 1, {
+      cachePath: join(auditDataDir(), ".tessdata"),
+    })
+  }
+  try {
+    const worker = await ocrWorker
+    const result = await worker.recognize(absolutePath)
+    return result.data.text ?? ""
+  } catch {
+    // A failed OCR is an empty read, not a failed extraction: the file is
+    // still stored and still shown as not machine-checked.
+    return ""
+  }
 }
 
 async function extractPdf(absolutePath: string): Promise<ExtractResult> {

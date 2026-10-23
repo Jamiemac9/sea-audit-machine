@@ -112,6 +112,12 @@ export const documents = sqliteTable(
     extractionState: text("extraction_state").notNull().default("PENDING"),
     extractionError: text("extraction_error"),
     extractedText: text("extracted_text"),
+    /**
+     * The extracted text with direct identifiers redacted. Kept alongside the
+     * raw text so there is always a lower-risk version to quote, demonstrate
+     * from or paste into a report without going back through the original.
+     */
+    redactedText: text("redacted_text"),
     pageCount: integer("page_count"),
     /**
      * From the document's own metadata, not the filesystem. Evidence in its own

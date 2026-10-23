@@ -15,6 +15,43 @@ import { WR_CODE_SET } from "./audit"
 /** Above this, a guess is accepted without a human looking at it. */
 export const AUTO_ACCEPT_CONFIDENCE = 0.8
 
+/**
+ * Words that turn up in folder names and filenames rather than in names.
+ * Never allowed to identify a resident on their own, however unique to one
+ * resident they happen to be within a given round.
+ */
+const FILING_WORDS = new Set([
+  "scan",
+  "scanned",
+  "scans",
+  "copy",
+  "final",
+  "draft",
+  "updated",
+  "new",
+  "old",
+  "signed",
+  "doc",
+  "docs",
+  "file",
+  "files",
+  "folder",
+  "sup",
+  "support",
+  "session",
+  "sessions",
+  "audit",
+  "resident",
+  "room",
+  "form",
+  "forms",
+  "review",
+  "plan",
+  "risk",
+  "pdf",
+  "docx",
+])
+
 export type ClassificationInput = {
   originalName: string
   text: string
@@ -119,6 +156,11 @@ function detectResident(
   // shares it. Two residents called Mohammed, or a caseload where every folder
   // carries the same suffix, would otherwise both match on the shared word and
   // cancel each other out as ambiguous.
+  //
+  // Distinctiveness alone is not enough, though: an alias learned from a folder
+  // name carries filing words as well as the name — "yusuf_sup", "Kelvin 2",
+  // "avery_m_scan" — and those words are unique to one resident purely by
+  // accident. Matching on them files unrelated documents, so they are excluded.
   const partOwners = new Map<string, Set<string>>()
   for (const resident of residents) {
     for (const candidate of candidatesFor(resident)) {
@@ -130,7 +172,8 @@ function detectResident(
       }
     }
   }
-  const isDistinctive = (part: string) => partOwners.get(part)?.size === 1
+  const isDistinctive = (part: string) =>
+    partOwners.get(part)?.size === 1 && !FILING_WORDS.has(part)
 
   const scored = residents.map((resident) => {
     const candidates = candidatesFor(resident)
