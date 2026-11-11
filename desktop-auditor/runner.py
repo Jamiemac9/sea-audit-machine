@@ -1,14 +1,8 @@
-"""Runs one audit through Claude Code, using the Claude login on this computer.
+"""Starts Claude Code on one REDACTED resident file, using the Claude login on this computer.
 
-Can be used without the window:
-    python runner.py "<resident folder>" [--ma "Example Housing Ltd"] [--date 10/11/26] [--follow-up]
-
-Private material lives in a SupportAudit folder in your home folder, never in this repo:
-    SupportAudit/
-      settings.json      remembered choices
-      reference/         house style, working rules, completed audits, optional SKILL.md override
-      runtime/           rebuilt every run: CLAUDE.md, the skill and the tools
-      work/<run>/        everything read and made during a run (resident data, keep private)
+Claude Code is only ever given the redacted copy of a round, the blank form and the
+redacted reference files. pipeline.py does the redaction before and the re-identification
+after; this module only runs Claude and reports what it is doing.
 """
 from __future__ import annotations
 
@@ -82,21 +76,9 @@ def _cmd_prefix(claude: str) -> list[str]:
 
 # ---------- one run ----------
 
-def resident_name_guess(folder: Path) -> str:
-    return re.sub(r"\s+", " ", folder.name).strip()
-
-
-def unique_output(folder: Path, name: str) -> Path:
-    out = folder / f"Support Audit - {name}.docx"
-    n = 2
-    while out.exists():
-        out = folder / f"Support Audit - {name} ({n}).docx"
-        n += 1
-    return out
-
-
 def build_runtime(job: dict) -> Path:
-    """Fresh copy of the agent folder with this run's details filled in."""
+    """Fresh copy of the agent folder with this run's details filled in, plus rules that stop
+    Claude Code opening anything private (original files, the key, the unredacted reference)."""
     runtime = HOME / "runtime"
     if runtime.exists():
         shutil.rmtree(runtime)
@@ -104,16 +86,22 @@ def build_runtime(job: dict) -> Path:
     shutil.copytree(AGENT_DIR / "tools", runtime / "tools")
     skill_dst = runtime / ".claude" / "skills" / "sea-support-audit"
     shutil.copytree(AGENT_DIR / "skills" / "sea-support-audit", skill_dst)
-    override = Path(job["reference"]) / "SKILL.md"
-    if override.exists():  # your own up-to-date copy of the skill wins over the repo copy
-        shutil.copy(override, skill_dst / "SKILL.md")
+    if job.get("skill_override") and Path(job["skill_override"]).exists():
+        shutil.copy(job["skill_override"], skill_dst / "SKILL.md")  # your own up-to-date skill wins
+    deny = []
+    for d in job.get("private_dirs", []):
+        pattern = "/" + Path(d).resolve().as_posix().lstrip("/") + "/**"
+        deny += [f"{tool}(/{pattern})" for tool in ("Read", "Edit", "Write", "Glob", "Grep")]
+    (runtime / ".claude" / "settings.json").write_text(json.dumps({"permissions": {"deny": deny}}, indent=2),
+                                                       encoding="utf-8")
     text = (AGENT_DIR / "CLAUDE.md").read_text(encoding="utf-8")
     fields = {
-        "RESIDENT": job["folder"], "TEMPLATE": job["template"], "REFERENCE": job["reference"],
-        "WORK": job["work"], "PY": Path(sys.executable).as_posix(), "TOOLS": (runtime / "tools").as_posix(),
-        "OUTPUT": job["output"], "MA": job.get("ma") or "take it from the licence agreement in the file",
+        "RESIDENT": job["folder"], "ROUND": job["round"], "TEMPLATE": job["template"],
+        "REFERENCE": job["reference"], "WORK": job["work"], "PY": Path(sys.executable).as_posix(),
+        "TOOLS": (runtime / "tools").as_posix(), "OUTPUT": job["output"],
+        "MA": job.get("ma") or "take it from the licence agreement in the file",
         "AUDIT_DATE": job["date"], "AUDIT_TYPE": "Follow-up audit" if job.get("follow_up") else "First audit (baseline)",
-        "NOTES": job.get("notes") or "none",
+        "NOTES": job.get("notes") or "none", "LABEL": job["label"],
     }
     for k, v in fields.items():
         text = text.replace("{{" + k + "}}", str(v))
@@ -121,30 +109,14 @@ def build_runtime(job: dict) -> Path:
     return runtime
 
 
-def make_job(folder: str, settings: dict, ma="", date="", follow_up=False, notes="", work_root: Path | None = None) -> dict:
-    folder_p = Path(folder).expanduser().resolve()
-    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    work = (work_root or HOME / "work") / f"{stamp}_{re.sub(r'[^A-Za-z0-9]+', '_', folder_p.name)}"
-    work.mkdir(parents=True, exist_ok=True)
-    return {
-        "folder": str(folder_p), "template": str(Path(settings["template"]).expanduser().resolve()),
-        "reference": str(Path(settings["reference"]).expanduser().resolve()), "work": str(work),
-        "output": str(unique_output(folder_p, resident_name_guess(folder_p))),
-        "ma": ma, "date": date or dt.date.today().strftime("%d/%m/%y"), "follow_up": follow_up,
-        "notes": notes,
-    }
-
-
 def check_job(job: dict, claude: str | None) -> list[str]:
     problems = []
     if not claude:
-        problems.append("Claude Code is not installed or not found. See README step 2.")
+        problems.append("Claude Code is not installed or not found. See the README, step 2.")
     if not Path(job["folder"]).is_dir():
-        problems.append(f"Resident folder not found: {job['folder']}")
+        problems.append("The redacted copy of this resident's file is missing. Delete the audit and add it again.")
     if not Path(job["template"]).is_file():
-        problems.append("Choose the blank Support_Audit_OG.docx first.")
-    if not Path(job["reference"]).is_dir():
-        problems.append(f"Reference folder not found: {job['reference']} (README step 4)")
+        problems.append("Upload the blank Support_Audit_OG.docx first.")
     return problems
 
 
@@ -159,14 +131,14 @@ class Run:
 
     def command(self, claude: str, runtime: Path) -> list[str]:
         job = self.job
-        prompt = (f"Audit the resident file at {job['folder']} and complete Form A from the blank form at "
-                  f"{job['template']}, following CLAUDE.md and the sea-support-audit skill. "
+        prompt = (f"Audit the resident file of {job['label']} at {job['folder']} and complete Form A from the "
+                  f"blank form at {job['template']}, following CLAUDE.md and the sea-support-audit skill. "
                   f"Save it as {job['output']}.")
         cmd = _cmd_prefix(claude) + [
             "-p", prompt, "--output-format", "stream-json", "--verbose",
             "--allowedTools", TOOLS_ALLOWED, "--disallowedTools", TOOLS_BLOCKED,
             "--permission-mode", "acceptEdits",
-            "--add-dir", job["folder"], str(Path(job["template"]).parent), job["reference"], job["work"],
+            "--add-dir", job["round"], str(Path(job["template"]).parent), job["reference"], job["work"],
         ]
         if self.settings.get("model"):
             cmd += ["--model", self.settings["model"]]
@@ -247,25 +219,3 @@ def _describe_tool(block: dict) -> str:
     if name == "Skill":
         return "Loading the audit skill"
     return name
-
-
-def main(argv):
-    import argparse
-    ap = argparse.ArgumentParser(description="Run one Support Audit without the window")
-    ap.add_argument("folder")
-    ap.add_argument("--ma", default="")
-    ap.add_argument("--date", default="")
-    ap.add_argument("--follow-up", action="store_true")
-    ap.add_argument("--notes", default="")
-    a = ap.parse_args(argv)
-    settings = load_settings()
-    job = make_job(a.folder, settings, a.ma, a.date, a.follow_up, a.notes)
-    run = Run(job, settings, print)
-    ok = run.start()
-    if run.result_text:
-        print("\n" + run.result_text)
-    sys.exit(0 if ok else 1)
-
-
-if __name__ == "__main__":
-    main(sys.argv[1:])

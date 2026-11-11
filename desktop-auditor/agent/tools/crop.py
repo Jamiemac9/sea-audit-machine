@@ -11,6 +11,7 @@ Pages are counted from 1. Rendered at 130 dpi, as the skill requires.
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -29,11 +30,23 @@ def _flag(args, name, default):
     return default
 
 
+def _note(out, entry):
+    """Record how each screenshot was made, next to it, so the app can cut the same area
+    from the original (unredacted) document when it puts the real details back."""
+    log = Path(out).resolve().parent / "shots.json"
+    data = json.loads(log.read_text()) if log.exists() else []
+    data = [d for d in data if d["out"] != str(Path(out).resolve())]
+    data.append({"out": str(Path(out).resolve()), **entry})
+    log.write_text(json.dumps(data, indent=1))
+
+
 def crop_rect(pdf, page_no, rect, out):
     doc = fitz.open(pdf)
     page = doc[page_no - 1]
     clip = fitz.Rect(rect) & page.rect
     page.get_pixmap(dpi=DPI, clip=clip, annots=True).save(out)
+    _note(out, {"kind": "crop", "pdf": str(Path(pdf).resolve()), "page": page_no,
+                "rect": [clip.x0, clip.y0, clip.x1, clip.y1], "dpi": DPI})
     print(f"saved {out} from page {page_no} area {tuple(round(v) for v in clip)}")
 
 
@@ -55,7 +68,13 @@ def crop_find(pdf, page_no, needle, out, above, below):
 
 
 def join(a, b, out, side):
-    ia, ib = Image.open(a).convert("RGB"), Image.open(b).convert("RGB")
+    canvas = join_images(Image.open(a).convert("RGB"), Image.open(b).convert("RGB"), side)
+    canvas.save(out)
+    _note(out, {"kind": "join", "a": str(Path(a).resolve()), "b": str(Path(b).resolve()), "side": side})
+    print(f"saved {out}")
+
+
+def join_images(ia, ib, side):
     gap = 12
     if side:
         canvas = Image.new("RGB", (ia.width + ib.width + gap, max(ia.height, ib.height)), "white")
@@ -63,8 +82,7 @@ def join(a, b, out, side):
     else:
         canvas = Image.new("RGB", (max(ia.width, ib.width), ia.height + ib.height + gap), "white")
         canvas.paste(ia, (0, 0)); canvas.paste(ib, (0, ia.height + gap))
-    canvas.save(out)
-    print(f"saved {out}")
+    return canvas
 
 
 def main(argv):

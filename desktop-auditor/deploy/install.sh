@@ -12,7 +12,7 @@ USER_HOME=/home/$USER_NAME
 
 echo "1/6 System packages (Python, LibreOffice for page checks, fonts)"
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv curl rsync fonts-dejavu-core >/dev/null
+apt-get install -y -qq python3 python3-venv curl rsync fonts-dejavu-core tesseract-ocr >/dev/null
 apt-get install -y -qq libreoffice-writer-nogui >/dev/null 2>&1 || apt-get install -y -qq libreoffice-writer >/dev/null
 
 echo "2/6 Service user ($USER_NAME, owner-only home)"
@@ -21,10 +21,11 @@ chmod 700 "$USER_HOME"
 
 echo "3/6 App files to $APP"
 mkdir -p "$APP"
-rsync -a --delete --exclude .venv --exclude __pycache__ --exclude tests "$SRC/" "$APP/"
+rsync -a --delete --exclude .venv --exclude __pycache__ --exclude tests --exclude '*.command' --exclude '*.bat' "$SRC/" "$APP/"
 python3 -m venv "$APP/.venv"
 "$APP/.venv/bin/pip" install -q --upgrade pip
 "$APP/.venv/bin/pip" install -q -r "$APP/requirements.txt"
+"$APP/.venv/bin/python" -m spacy download en_core_web_sm -q
 chown -R root:root "$APP"
 
 echo "4/6 Claude Code for $USER_NAME"

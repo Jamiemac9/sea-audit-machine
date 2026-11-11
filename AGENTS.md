@@ -37,10 +37,11 @@ Node-only; do not add a Python process. Keep route handlers thin and put logic i
 `src/lib/`.
 
 **`desktop-auditor/` is a separate tool** and the Node-only rule above does not apply to it.
-It is a small Python web app, hosted privately on the auditor's own server behind
-Tailscale, that runs the Form A audit through Claude Code (see its README). It shares no code with the web app. The same data
-rules apply to it: no resident data, no real names, and private reference material and uploads live in
-`SA_HOME` on the server, never in this repository.
+It is a small Python app that runs on the auditor's own computer: it redacts a round
+locally, runs the Form A audit through Claude Code on the redacted copy only, and
+re-identifies the finished form locally (see its README). It shares no code with the web app. The same data
+rules apply to it: no resident data, no real names, and private reference material, uploads and the redaction key live in
+`SA_HOME` on the auditor's computer, never in this repository.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

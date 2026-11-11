@@ -1,124 +1,97 @@
 # Support Audit
 
-Fills in a resident's Support Audit (Form A) the same way it is done in chat, from a private
-web page you can open on your Mac, your Windows PC or your phone, at any time.
+Fills in a resident's Support Audit (Form A) the same way it is done in chat, on your own
+computer, **without Claude ever seeing who anyone is.**
 
-It lives on your own server and runs on your Claude login through Claude Code, so there is
-no API key to pay for. Only your own devices can open the page: it is published through
-Tailscale, not the open internet.
+## The idea, simply
 
-## How it works
+1. **You drop in a resident's folder.**
+2. **Your computer hides everyone's details first.** Names, addresses, postcodes, phone
+   numbers, emails, dates of birth, NI and NHS numbers are swapped for labels like
+   `[RESIDENT_A]`, `[PERSON_2]`, `[ADDRESS_1]`. This happens on your computer with free,
+   open-source tools. Nothing is sent anywhere during this step.
+3. **You check it.** The page shows exactly what Claude will get, page by page, and
+   confirms it searched the copy again and found none of the hidden details left. If you
+   spot a name it missed, type it in and it hides it and checks again.
+4. **Claude audits the hidden copy** and writes the form using the labels
+   ("[PERSON_2] supported [RESIDENT_A] to…").
+5. **Your computer puts the real details back.** Labels become names again and every
+   screenshot is re-cut from the original page, then the form is saved in your folder.
 
-Think of it as two workers on the server:
+The list that links each label to the real person (the "key") never leaves your computer.
 
-1. **Claude does the thinking and the writing.** It reads every document, checks the
-   sessions, decides YES/NO/N/A, writes What support has been given, Strengths, Next Steps
-   and General Notes, and gives the rating. It follows the `sea-support-audit` skill, plus
-   your house style and completed audits from the reference files.
-2. **Fixed scripts do the fiddly parts identically every time.** They read the PDFs
-   (including ticks and signatures), spot pasted signatures, copied paragraphs and
-   impossible risk scores, cut plain screenshots, and write into the form in Aptos 12 with
-   highlighted YES/NO/N/A, dash bullets and 14.8 cm screenshots. Then they turn it into
-   pages and Claude looks at every one before it finishes.
+**Training:** on Free, Pro and Max accounts, Anthropic only trains on your chats and Claude
+Code sessions if the "Help improve Claude" privacy setting is on. Check it is off in your
+Claude privacy settings. With it off and redaction on, what Claude sees has no names or
+identifiers, and it isn't used to train future models. (Chats you rate with the feedback
+buttons are an exception, so don't rate audit runs.)
 
-## Using it
+## What is hidden, and what isn't
 
-1. Open the page (the address the install prints, like `https://london-vps.your-tailnet.ts.net`).
-2. **Once:** upload the blank `Support_Audit_OG.docx` and your reference files (house
-   style, rules, your `SKILL.md`, your completed audits). They stay on the server.
-3. **Each audit:** drop the resident's folder on the box, type the managing agent, check the
-   date, press **Start audit**. To do a whole property, drop the property folder and tick
-   "This folder holds several residents".
-4. Watch it work, then press **Download form**. The rating and anything you need to
-   screenshot yourself are shown above the log.
-5. When a round is closed, press **Delete job and files** so resident files don't sit on the
-   server.
-
-Audits run one at a time, in order. You can close the page: it carries on, and the
-results are there when you come back.
-
-## Setting it up on the server (once)
-
-You need: an Ubuntu or Debian server that is switched on (your London VPS), Tailscale on the
-server and on your devices, and the repo on the server.
-
-**1. Get the code onto the server.** On the server:
-
-```bash
-git clone https://github.com/Jamiemac9/sea-audit-machine.git
-cd sea-audit-machine
-git checkout desktop-auditor     # until the pull request is merged
-```
-
-(Once the repo is private, GitHub will ask you to sign in: run `gh auth login` first.)
-
-**2. Make sure Tailscale is on:** `sudo tailscale up`
-
-**3. Install:**
-
-```bash
-sudo ./desktop-auditor/deploy/install.sh
-```
-
-It installs everything, starts the app so it restarts by itself after a reboot, and prints
-the private address.
-
-**4. Log Claude in, once:**
-
-```bash
-sudo -iu supportaudit claude auth login
-```
-
-It shows a link. Open it on your phone or laptop, sign in to Claude, and paste the code
-back. The top right of the page then says **Claude: logged in**.
-
-**Optional password on top of Tailscale:** put `SA_PASSWORD=something` in
-`/etc/supportaudit.env`, then `sudo systemctl restart supportaudit`.
-
-## Updating
-
-```bash
-cd sea-audit-machine && git pull && sudo ./desktop-auditor/deploy/install.sh
-```
-
-Your login, blank form, reference files and audits are kept.
-
-## If something is wrong
-
-| You see | Do this |
+| Hidden | Kept, because the audit needs it |
 |---|---|
-| Page won't open | Is the server on? Is Tailscale on, on this device too? On the server: `sudo systemctl status supportaudit` |
-| "Claude is not logged in" | Step 4 again |
-| An audit says failed | Read the last lines of its log; press **Retry** |
-| Want the server's own log | `sudo journalctl -u supportaudit -n 100` |
+| Resident names (from the folder names), and first names or surnames on their own | Session dates, durations, document codes |
+| Anyone else's name: staff, family, professionals (found automatically, plus any you list) | What was done, goals, services named (Jobcentre, GP, CGL) |
+| Street addresses and postcodes | Risk scores, ticks, signatures (as images) |
+| Phone numbers, emails, NI numbers, NHS numbers, dates of birth, bank details | Health and support needs, without anything saying whose they are |
+| The same in file names, form fields, document properties ("last saved by") and photo details | |
 
-## Running one without the page
+Scanned pages and photos are read with Tesseract (open-source OCR) and names on them are
+blacked out with the label written in. If a file can't be hidden safely (for example a scan
+with OCR not installed, or a file type it can't read), **it is not sent at all**, and the
+check screen lists it so you can look at it yourself.
 
-On any computer with Claude Code logged in:
+Be aware: handwriting, nicknames and unusual spellings can be missed by any automatic
+redaction. That is what the check step is for. Add anything it missed to "Names to always
+hide" and it won't miss it again.
 
-```bash
-python runner.py "/path/to/Resident Folder" --ma "Agent Name Ltd" --date 11/11/26
-```
+## Setting it up on your Mac (once)
+
+1. Install **Python 3** from [python.org](https://www.python.org/downloads/).
+2. Install **Claude Code**: open Terminal, paste `curl -fsSL https://claude.ai/install.sh | bash`,
+   then type `claude`, log in with your Claude account, and type `/exit`.
+3. Install the two free helpers with [Homebrew](https://brew.sh):
+   `brew install tesseract` (reads scans and photos) and
+   `brew install --cask libreoffice` (opens Word files so they can be hidden properly).
+4. Double-click **`Support Audit.command`** in this folder. The first time, macOS may say
+   it is from the internet: right-click it, choose Open, then Open. The first run takes a
+   few minutes to set itself up. Then the page opens in your browser.
+
+The four chips at the top right of the page should all be green: Claude logged in, Name
+finder, Scan reader, Word converter.
+
+**Always running (optional):** in Terminal, from this folder, run
+`./deploy/mac-start-at-login.sh`. It then starts with your Mac and you can just bookmark
+`http://127.0.0.1:8765`. That address only works on this Mac; nothing else can reach it.
+
+On Windows, double-click `Support Audit (Windows).bat` instead (install Git for Windows
+before Claude Code).
+
+## Each audit
+
+1. **Once:** upload the blank `Support_Audit_OG.docx`, your reference files (house style,
+   rules, your `SKILL.md`, completed audits), and list the names to always hide (support
+   workers, managers).
+2. Drop the resident's folder (or a property folder and tick "several residents"), type the
+   managing agent, press **Start**.
+3. When it says **ready to check**, click through "What Claude will see", then press
+   **Looks right: send to Claude**.
+4. When it's **done**: **Open in Word**. It's also saved in your "Save finished forms in"
+   folder, under the managing agent's name.
+5. When the round is closed, **Delete this round** removes the copies and the key.
 
 ## Where things are
 
 | Path | What it is |
 |---|---|
-| `server.py` + `web/index.html` | The private web page and the audit queue |
-| `runner.py` | Starts Claude Code with the right folders, instructions and tools |
-| `deploy/install.sh`, `deploy/supportaudit.service` | Server install and the always-on service |
-| `agent/CLAUDE.md` | The order of work for each audit |
-| `agent/skills/sea-support-audit/SKILL.md` | The audit skill (real names removed for the repo; your own `SKILL.md` in the reference files wins) |
-| `agent/tools/read_pack.py` | Reads every document: ticks, metadata, reused images, copied text, risk scores |
-| `agent/tools/inspect_template.py` | Maps every table and cell of the blank form |
-| `agent/tools/crop.py` | Plain screenshots, and two joined for comparisons |
-| `agent/tools/formkit.py` | The fixed way of writing into the form |
-| `agent/tools/finish.py` | Opens the result, checks fonts and em dashes, renders every page |
-| `tests/test_tools.py` | Runs every tool on an invented resident: `python tests/test_tools.py` |
+| `Support Audit.command`, `Support Audit (Windows).bat` | Double-click to open |
+| `server.py`, `web/index.html` | The page and the queue (this computer only) |
+| `pipeline.py` | Hide → check → Claude → put back, for a round |
+| `privacy/redact.py` | Hides the details (redaction in) |
+| `privacy/reidentify.py` | Puts them back and re-cuts screenshots (redaction out) |
+| `runner.py` | Starts Claude Code on the hidden copy only, with private folders blocked |
+| `agent/` | Claude's instructions, the audit skill and the form-filling tools |
+| `deploy/` | Start-with-the-Mac script, and the files for moving it to a server later |
+| `tests/` | `test_tools.py`, `test_privacy.py`, `test_app.py`: all on invented data |
 
-## Privacy
-
-Resident files are uploaded to your server over Tailscale (encrypted), kept in an
-owner-only folder, and sent to Claude to be audited, which is the same as uploading them in
-chat today. Nothing is written to this repository, web access is switched off for every
-audit, and **Delete job and files** removes everything for that resident from the server.
+Private files live in `SupportAudit` in your home folder and never in this repository.
