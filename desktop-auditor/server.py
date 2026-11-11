@@ -10,6 +10,19 @@ check it, audit each resident with Claude, put the real details back (on this co
 """
 from __future__ import annotations
 
+import os as _os
+import sys as _sys
+from pathlib import Path as _Path
+
+# Started with no console (pythonw on Windows, a login item on a Mac): there is nowhere to
+# print, and the web server refuses to start without somewhere to write. Use a log file.
+if _sys.stdout is None or _sys.stderr is None:
+    _home = _Path(_os.environ.get("SA_HOME") or (_Path.home() / "SupportAudit")).expanduser()
+    _home.mkdir(parents=True, exist_ok=True)
+    _log = open(_home / "server.log", "a", encoding="utf-8", buffering=1)
+    _sys.stdout = _sys.stdout or _log
+    _sys.stderr = _sys.stderr or _log
+
 import json
 import os
 import platform
