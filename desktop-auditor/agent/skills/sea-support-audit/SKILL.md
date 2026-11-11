@@ -87,9 +87,9 @@ Applying it:
 
 ## Filling the form (python-docx editing the OG docx)
 - Header: MA name as on licence, property address, audit date (DD/MM/YY), resident name, contact number ('Not recorded on file' if blank), move-in date.
-- YES/NO/N/A: **highlight the chosen word** (yellow text highlight + bold). Do not shade the whole cell.
+- YES/NO/N/A: **highlight the chosen word** (yellow text highlight only, not bold). Do not shade the whole cell.
 - The template's Normal style is green, bold, 20.5pt with a large left indent. Every paragraph/run you add must set left indent 0, first-line indent 0, Aptos, black, explicit bold False, 12pt throughout (body and headings).
-- All tables in the template are floating (`w:tblpPr`) and overlap the header when they break across pages. Before saving, remove `tblpPr`/`tblOverlap` and add `w:tblInd` = the old `tblpX` (insert before tblBorders/shd/tblLayout/tblCellMar/tblLook to keep schema order).
+- All tables in the template are floating (`w:tblpPr`) and overlap the header when they break across pages. Unfloat only the two tables that grow, What support has been given and General Notes; unfloating every table displaces the page. For those two, remove `tblpPr`/`tblOverlap` and add `w:tblInd` = the old `tblpX` (insert before tblBorders/shd/tblLayout/tblCellMar/tblLook to keep schema order).
 - Validate with the docx skill's `validate.py`, convert to PDF with soffice and look at every page.
 
 ### Section formats

@@ -41,7 +41,7 @@ GREY = RGBColor(0x59, 0x59, 0x59)
 RED = RGBColor(0xC0, 0x00, 0x00)
 SHOT_WIDTH = Cm(14.8)
 CAPTION_SIZE = Pt(9)
-BOLD_CHOICE = True   # SKILL.md: "highlight the chosen word (yellow text highlight + bold)"
+BOLD_CHOICE = False  # highlighted only, not bold (agreed 11/11/2026)
 
 _shot_counter = {"n": 0}
 

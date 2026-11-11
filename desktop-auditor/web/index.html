@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support Audit</title>
+<style>
+  :root { --ink:#1d2433; --muted:#667085; --line:#e4e7ec; --bg:#f7f8fa; --accent:#2f5d50; --warn:#b42318; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 -apple-system, "Segoe UI", Aptos, Roboto, sans-serif; color:var(--ink); background:var(--bg); }
+  header { padding:18px 24px; background:#fff; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  h1 { font-size:20px; margin:0; }
+  main { max-width:1100px; margin:0 auto; padding:20px; display:grid; grid-template-columns: 1fr 1fr; gap:20px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  section { background:#fff; border:1px solid var(--line); border-radius:10px; padding:18px; }
+  h2 { font-size:16px; margin:0 0 10px; }
+  .muted { color:var(--muted); font-size:13px; }
+  .ok { color:var(--accent); font-weight:600; }
+  .bad { color:var(--warn); font-weight:600; }
+  label { display:block; margin:10px 0 4px; font-size:13px; font-weight:600; }
+  input[type=text], textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font:inherit; }
+  textarea { min-height:60px; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  button, .btn { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:8px 14px; font:inherit; cursor:pointer; text-decoration:none; display:inline-block; }
+  button.light, .btn.light { background:#eef2f1; color:var(--ink); }
+  button.danger { background:#fff; color:var(--warn); border:1px solid #f1c7c3; }
+  button:disabled { opacity:.5; cursor:default; }
+  .drop { border:2px dashed #c6cdd6; border-radius:10px; padding:26px; text-align:center; color:var(--muted); cursor:pointer; margin-top:6px; }
+  .drop.over { border-color:var(--accent); background:#f1f6f4; }
+  ul.files { list-style:none; padding:0; margin:6px 0; max-height:160px; overflow:auto; font-size:13px; }
+  ul.files li { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid #f2f4f7; }
+  ul.files li button { padding:0 8px; font-size:12px; }
+  .jobs { width:100%; border-collapse:collapse; font-size:14px; }
+  .jobs td { padding:8px 6px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .jobs tr.sel td { background:#f1f6f4; }
+  .pill { font-size:12px; padding:2px 8px; border-radius:20px; background:#eef2f6; }
+  .pill.running { background:#fff4d6; } .pill.done { background:#dff3ea; } .pill.failed, .pill.stopped { background:#fde7e4; }
+  .rating { font-weight:600; }
+  pre { white-space:pre-wrap; background:#0f1720; color:#d6e2ef; padding:12px; border-radius:8px; max-height:360px; overflow:auto; font-size:12.5px; }
+  .result { white-space:pre-wrap; background:#f7faf9; border:1px solid var(--line); padding:12px; border-radius:8px; }
+  .full { grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Support Audit</h1>
+  <div id="login" class="muted">Checking Claude login…</div>
+</header>
+<main>
+  <section>
+    <h2>1. Blank form</h2>
+    <div id="templateState" class="muted">…</div>
+    <div class="row" style="margin-top:8px">
+      <input type="file" id="templateFile" accept=".docx" hidden>
+      <button class="light" onclick="templateFile.click()">Upload Support_Audit_OG.docx</button>
+    </div>
+    <h2 style="margin-top:20px">2. Reference files</h2>
+    <div class="muted">House style, rules, your SKILL.md and your completed audits. Upload once; they stay on the server.</div>
+    <ul class="files" id="refList"></ul>
+    <input type="file" id="refFiles" multiple hidden>
+    <button class="light" onclick="refFiles.click()">Add reference files</button>
+  </section>
+
+  <section>
+    <h2>3. New audit</h2>
+    <div class="drop" id="drop">Drop the resident's folder here, or click to choose it<br><span class="muted">A .zip of the folder works too</span></div>
+    <input type="file" id="folderPick" webkitdirectory multiple hidden>
+    <input type="file" id="zipPick" accept=".zip" hidden>
+    <div class="muted" id="picked" style="margin-top:6px"></div>
+    <label><input type="checkbox" id="several"> This folder holds several residents (one folder each)</label>
+    <label for="ma">Managing agent (as on licence)</label>
+    <input type="text" id="ma" placeholder="Leave blank to take it from the licence">
+    <div class="row">
+      <div style="flex:1"><label for="date">Audit date</label><input type="text" id="date"></div>
+      <div style="flex:1"><label><input type="checkbox" id="followUp"> Follow-up audit</label></div>
+    </div>
+    <label for="notes">Notes for this file (optional)</label>
+    <textarea id="notes"></textarea>
+    <div class="row" style="margin-top:12px">
+      <button id="startBtn" onclick="start()" disabled>Start audit</button>
+      <a href="#" class="muted" onclick="zipPick.click();return false">or upload a .zip</a>
+      <span id="startMsg" class="muted"></span>
+    </div>
+  </section>
+
+  <section class="full">
+    <h2>Audits</h2>
+    <table class="jobs"><tbody id="jobRows"></tbody></table>
+    <div id="detail" style="display:none; margin-top:16px">
+      <div class="row" style="justify-content:space-between">
+        <h2 id="dName" style="margin:0"></h2>
+        <div class="row">
+          <a id="dDownload" class="btn" href="#">Download form</a>
+          <button class="light" id="dStop" onclick="act('stop')">Stop</button>
+          <button class="light" id="dRetry" onclick="act('retry')">Retry</button>
+          <button class="danger" onclick="del()">Delete job and files</button>
+        </div>
+      </div>
+      <div id="dResult" class="result" style="margin-top:12px; display:none"></div>
+      <pre id="dLog"></pre>
+    </div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let picked = [];      // [{file, path}]
+let selected = null, logNext = 0;
+
+$('date').value = new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'2-digit', year:'2-digit'});
+
+async function api(path, opts={}) {
+  const r = await fetch(path, opts);
+  if (!r.ok) { let t = await r.text(); try { t = JSON.parse(t).detail } catch(e){}; throw new Error(t); }
+  return r.json();
+}
+
+async function refresh() {
+  const s = await api('/api/state');
+  $('login').innerHTML = s.login.loggedIn ? '<span class="ok">Claude: logged in</span>'
+    : '<span class="bad">Claude is not logged in on the server</span> <span class="muted">(README: "Log in once")</span>';
+  $('templateState').innerHTML = s.template ? `<span class="ok">✓</span> ${s.template}` : '<span class="bad">Not uploaded yet</span>';
+  $('refList').innerHTML = s.reference.map(n => `<li><span>${esc(n)}</span><button class="light" onclick="delRef('${encodeURIComponent(n)}')">Remove</button></li>`).join('')
+    || '<li class="muted">Nothing yet</li>';
+  $('jobRows').innerHTML = s.jobs.map(j => `<tr class="${j.id===selected?'sel':''}" onclick="openJob('${j.id}')">
+      <td>${esc(j.name)}</td><td><span class="pill ${j.status}">${j.status}</span></td>
+      <td class="rating">${j.rating||''}</td><td class="muted">${j.created.replace('T',' ')}</td></tr>`).join('')
+    || '<tr><td class="muted">No audits yet</td></tr>';
+  $('startBtn').disabled = !picked.length;
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
+
+// ---- template and reference ----
+$('templateFile').onchange = async e => {
+  const fd = new FormData(); fd.append('file', e.target.files[0]);
+  try { await api('/api/template', {method:'POST', body:fd}) } catch(err) { alert(err.message) }
+  e.target.value=''; refresh();
+};
+$('refFiles').onchange = async e => {
+  const fd = new FormData(); for (const f of e.target.files) fd.append('files', f);
+  await api('/api/reference', {method:'POST', body:fd}); e.target.value=''; refresh();
+};
+async function delRef(n){ await api('/api/reference/'+n, {method:'DELETE'}); refresh(); }
+
+// ---- choosing a folder: click, drop (walks sub-folders), or zip ----
+$('drop').onclick = () => $('folderPick').click();
+$('folderPick').onchange = e => setPicked([...e.target.files].map(f => ({file:f, path:f.webkitRelativePath || f.name})));
+$('zipPick').onchange = e => setPicked([...e.target.files].map(f => ({file:f, path:f.name})));
+$('drop').ondragover = e => { e.preventDefault(); $('drop').classList.add('over') };
+$('drop').ondragleave = () => $('drop').classList.remove('over');
+$('drop').ondrop = async e => {
+  e.preventDefault(); $('drop').classList.remove('over');
+  const out = [];
+  const walk = (entry, prefix) => new Promise(res => {
+    if (entry.isFile) entry.file(f => { out.push({file:f, path: prefix + f.name}); res() });
+    else { const rd = entry.createReader(); const all = [];
+      const more = () => rd.readEntries(async es => { if (!es.length) { for (const c of all) await walk(c, prefix + entry.name + '/'); res() } else { all.push(...es); more() } });
+      more(); }
+  });
+  for (const it of e.dataTransfer.items) { const en = it.webkitGetAsEntry && it.webkitGetAsEntry(); if (en) await walk(en, '') }
+  setPicked(out);
+};
+function setPicked(list) {
+  picked = list.filter(p => !p.path.split('/').pop().startsWith('.'));
+  const top = picked.length ? picked[0].path.split('/')[0] : '';
+  $('picked').textContent = picked.length ? `${top}: ${picked.length} files ready` : '';
+  refresh();
+}
+
+async function start() {
+  const fd = new FormData();
+  for (const p of picked) fd.append('files', p.file, p.path);
+  fd.append('ma', $('ma').value); fd.append('date', $('date').value);
+  fd.append('follow_up', $('followUp').checked); fd.append('notes', $('notes').value);
+  fd.append('several', $('several').checked);
+  $('startBtn').disabled = true; $('startMsg').textContent = 'Uploading…';
+  try {
+    const r = await api('/api/jobs', {method:'POST', body:fd});
+    $('startMsg').textContent = `${r.created.length} audit(s) queued`;
+    picked = []; $('picked').textContent = ''; $('notes').value = '';
+    openJob(r.created[0]);
+  } catch(err) { $('startMsg').textContent = ''; alert(err.message) }
+  refresh();
+}
+
+// ---- job detail ----
+async function openJob(id) { selected = id; logNext = 0; $('dLog').textContent = ''; $('detail').style.display='block'; await poll(); refresh(); }
+async function poll() {
+  if (!selected) return;
+  let d; try { d = await api(`/api/jobs/${selected}?offset=${logNext}`) } catch(e) { selected=null; $('detail').style.display='none'; return }
+  const j = d.job;
+  $('dName').textContent = `${j.name} · ${j.status}`;
+  if (d.lines.length) { $('dLog').textContent += d.lines.join('\n') + '\n'; $('dLog').scrollTop = 1e9 }
+  logNext = d.next;
+  $('dDownload').style.display = j.has_output ? '' : 'none';
+  $('dDownload').href = `/api/jobs/${selected}/download`;
+  $('dStop').style.display = ['running','queued'].includes(j.status) ? '' : 'none';
+  $('dRetry').style.display = ['failed','stopped','done'].includes(j.status) ? '' : 'none';
+  $('dResult').style.display = j.result ? '' : 'none';
+  $('dResult').textContent = j.result || '';
+}
+async function act(a) { await api(`/api/jobs/${selected}/${a}`, {method:'POST'}); poll(); refresh() }
+async function del() {
+  if (!confirm('Delete this audit and every file uploaded for it from the server? Download the form first if you need it.')) return;
+  try { await api(`/api/jobs/${selected}`, {method:'DELETE'}) } catch(err) { return alert(err.message) }
+  selected = null; $('detail').style.display='none'; refresh();
+}
+
+refresh(); setInterval(() => { poll(); refresh() }, 3000);
+</script>
+</body>
+</html>

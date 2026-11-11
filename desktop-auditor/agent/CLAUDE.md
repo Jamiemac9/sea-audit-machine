@@ -52,9 +52,7 @@ audits. Where the skill and a reference file disagree, the skill wins.
    own blank lines, `choose()` for every YES/NO/N/A, the `*_after()` helpers for everything
    added (they clone the template's own paragraph formatting), and `unfloat()` only for
    the tables that grow with content (Support Delivered and General Notes) plus any other
-   you see overlapping the header in the check pages. This is narrower than the skill's
-   "remove tblpPr from all tables": unfloating every table displaces the page, so the
-   reference rules' narrower version is the one to follow. Do not restyle, retype or
+   you see overlapping the header in the check pages. Do not restyle, retype or
    rebuild anything the template already has: headers, footers, labels, centred underlined
    sub-headings. Run it.
 9. **Check it:** `"{{PY}}" "{{TOOLS}}/finish.py" "{{OUTPUT}}" "{{WORK}}"`, then look at

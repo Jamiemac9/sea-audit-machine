@@ -23,7 +23,7 @@ from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent
 AGENT_DIR = APP_DIR / "agent"
-HOME = Path.home() / "SupportAudit"
+HOME = Path(os.environ.get("SA_HOME") or (Path.home() / "SupportAudit")).expanduser()
 SETTINGS = HOME / "settings.json"
 TOOLS_ALLOWED = "Bash,Read,Write,Edit,MultiEdit,Glob,Grep,Skill,TodoWrite"
 TOOLS_BLOCKED = "WebFetch,WebSearch"
@@ -60,6 +60,20 @@ def find_claude(preferred: str = "") -> str | None:
         if p.exists():
             return str(p)
     return None
+
+
+def login_status(claude: str | None) -> dict:
+    """Ask Claude Code whether it is logged in. Free: sends no message."""
+    if not claude:
+        return {"loggedIn": False, "reason": "Claude Code is not installed"}
+    try:
+        out = subprocess.run(_cmd_prefix(claude) + ["auth", "status", "--json"], capture_output=True,
+                             text=True, timeout=30)
+        data = json.loads(out.stdout or "{}")
+        return {"loggedIn": bool(data.get("loggedIn")), "method": data.get("authMethod"),
+                "expires": data.get("loginExpiresAt")}
+    except Exception as e:
+        return {"loggedIn": False, "reason": f"{type(e).__name__}: {e}"}
 
 
 def _cmd_prefix(claude: str) -> list[str]:
@@ -107,10 +121,10 @@ def build_runtime(job: dict) -> Path:
     return runtime
 
 
-def make_job(folder: str, settings: dict, ma="", date="", follow_up=False, notes="") -> dict:
+def make_job(folder: str, settings: dict, ma="", date="", follow_up=False, notes="", work_root: Path | None = None) -> dict:
     folder_p = Path(folder).expanduser().resolve()
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    work = HOME / "work" / f"{stamp}_{re.sub(r'[^A-Za-z0-9]+', '_', folder_p.name)}"
+    work = (work_root or HOME / "work") / f"{stamp}_{re.sub(r'[^A-Za-z0-9]+', '_', folder_p.name)}"
     work.mkdir(parents=True, exist_ok=True)
     return {
         "folder": str(folder_p), "template": str(Path(settings["template"]).expanduser().resolve()),
