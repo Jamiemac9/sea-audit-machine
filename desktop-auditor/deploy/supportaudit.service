@@ -1,0 +1,23 @@
+[Unit]
+Description=Support Audit (private web page, reached through Tailscale)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=supportaudit
+Group=supportaudit
+WorkingDirectory=/opt/supportaudit
+Environment=SA_HOME=/home/supportaudit/SupportAudit
+Environment=SA_BIND=127.0.0.1
+Environment=SA_PORT=8765
+Environment=PATH=/home/supportaudit/.local/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/etc/supportaudit.env
+ExecStart=/opt/supportaudit/.venv/bin/python server.py
+Restart=always
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

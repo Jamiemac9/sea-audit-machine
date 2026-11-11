@@ -33,6 +33,7 @@ Resident documents are never stored in the project folder.
 | `src/lib/ingest.ts` | Store bytes, then extract and classify |
 | `src/app/api/rounds/[roundId]/documents` | The upload endpoint |
 | `scripts/seed.ts` | Synthetic data with the defects the checks look for |
+| `desktop-auditor/` | Separate private web app that fills in Form A through Claude Code; see its README |
 
 ## Scripts
 
