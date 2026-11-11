@@ -41,7 +41,14 @@ except Exception:  # optional: names you list and the folder names are still cau
     _NLP = None
 
 try:
+    import os as _os
     import pytesseract
+    for _exe in (r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+                 _os.path.expandvars(r"%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe"),
+                 "/opt/homebrew/bin/tesseract", "/usr/local/bin/tesseract"):
+        if _os.path.exists(_exe) and not shutil.which("tesseract"):
+            pytesseract.pytesseract.tesseract_cmd = _exe  # installers often don't add it to PATH
+            break
     pytesseract.get_tesseract_version()
     _OCR = True
 except Exception:

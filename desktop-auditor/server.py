@@ -143,9 +143,24 @@ def page():
     return (Path(__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
 
 
+_ref_sig = {"value": None}
+
+
+def reference_changed() -> bool:
+    """Files can be dropped straight into the reference folder: notice and re-redact."""
+    sig = sorted((p.name, p.stat().st_size, int(p.stat().st_mtime)) for p in pl.REFERENCE.iterdir() if p.is_file())
+    if sig != _ref_sig["value"]:
+        first = _ref_sig["value"] is None
+        _ref_sig["value"] = sig
+        return not first or (bool(sig) and not any(pl.REFERENCE_RED.iterdir()))
+    return False
+
+
 @app.get("/api/state")
 def state():
     from privacy import redact as R
+    if reference_changed():
+        tasks.put(("reference", None, None))
     s = pl.settings()
     t = pl.template_path()
     ref_report = pl.HOME / "private_reference" / "reference-redaction-report.json"
@@ -414,8 +429,8 @@ def delete_batch(bid: str):
 def main():
     recover()
     threading.Thread(target=worker, daemon=True).start()
-    if any(pl.REFERENCE.iterdir()) and not any(pl.REFERENCE_RED.iterdir()):
-        tasks.put(("reference", None, None))
+    reference_changed()
+    tasks.put(("reference", None, None))
     uvicorn.run(app, host=os.environ.get("SA_BIND", "127.0.0.1"), port=PORT, log_level="warning")
 
 

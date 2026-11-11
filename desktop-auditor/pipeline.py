@@ -47,12 +47,12 @@ def settings() -> dict:
 
 
 def template_path() -> Path | None:
-    files = sorted(TEMPLATE_DIR.glob("*.docx"))
+    files = sorted(p for p in TEMPLATE_DIR.glob("*.docx") if not p.name.startswith("~$"))
     return files[0] if files else None
 
 
 def refresh_reference() -> dict:
-    """Redact the reference files again (after any upload or removal)."""
+    """Redact the reference files again (after any upload, removal, or files dropped in)."""
     return redact_reference(REFERENCE, REFERENCE_RED, HOME / "private_reference", settings()["hide_names"])
 
 
