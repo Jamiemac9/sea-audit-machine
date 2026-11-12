@@ -20,6 +20,7 @@ import datetime as dt
 import json
 import re
 import shutil
+import time
 import uuid
 from pathlib import Path
 
@@ -124,7 +125,11 @@ def activity(bid: str, label: str) -> dict:
         for i, (marker, _) in enumerate(STAGES):
             if marker in line and i > reached:
                 reached = i
-    return {"step": reached + 1, "of": len(STAGES), "doing": STAGES[reached][1] if reached >= 0 else "Starting"}
+    p = bdir(bid) / "private" / f"log-{label or 'round'}.txt"
+    quiet = int(time.time() - p.stat().st_mtime) if p.exists() else None
+    last = next((l.strip() for l in reversed(lines) if l.strip() and not l.startswith("  >")), "")
+    return {"step": reached + 1, "of": len(STAGES), "doing": STAGES[reached][1] if reached >= 0 else "Starting",
+            "quiet_seconds": quiet, "last": last[:160]}
 
 
 def read_log(bid: str, label: str) -> list[str]:
@@ -173,10 +178,19 @@ def redact(bid: str) -> dict:
         save(b)
         return b
     key = json.loads((d / "private" / "key.json").read_text(encoding="utf-8"))
+    held = [f for f in rep["files"] if f.get("status") == "held back"]
     for name, r in b["residents"].items():
         r["label"] = key["terms"][re.sub(r"\s+", " ", name.strip().lower())]
         r["status"] = "check" if not rep["leaks"] else "blocked"
-    held = [f for f in rep["files"] if f.get("status") == "held back"]
+        r.pop("error", None)
+        mine = [f for f in rep["files"] if f.get("resident") == r["label"]]
+        readable = [f for f in mine if f.get("status") not in ("held back",)]
+        r["documents"] = len(readable)
+        if not readable:
+            r["status"] = "empty"
+            why = sorted({f"{Path(f['file']).name}: {f.get('reason')}" for f in mine})[:6]
+            r["error"] = ("No documents could be read for this resident, so there is nothing to audit."
+                          + (" Held back: " + "; ".join(why) if why else " The folder was empty."))
     b["report"] = {"counts": rep["counts"], "held_back": held, "leaks": rep["leaks"],
                    "possible_names": rep["possible_names"][:200], "ner": rep["ner"], "ocr": rep["ocr"],
                    "office": rep["office"],
@@ -214,6 +228,7 @@ def approve(bid: str, labels: list[str] | None = None) -> list[str]:
             continue
         if r["status"] in ("check", "failed", "stopped", "done"):
             r["status"] = "queued"
+            r.pop("error", None)
             queued.append(name)
     b["status"] = "approved"
     save(b)
@@ -243,6 +258,8 @@ def run_resident(bid: str, name: str, on_run=None) -> dict:
     }
     r["status"] = "running"
     r["started"] = dt.datetime.now().isoformat(timespec="seconds")
+    r.pop("error", None)
+    r.pop("finished", None)
     save(b)
     run = runner.Run(job, settings(), lambda line: log(bid, label, line))
     if on_run:
@@ -251,15 +268,19 @@ def run_resident(bid: str, name: str, on_run=None) -> dict:
         ok = run.start()
     except Exception as e:
         log(bid, label, f"! {type(e).__name__}: {e}")
+        run.error = run.error or f"The app hit an error: {type(e).__name__}: {e}"
         ok = False
     b = load(bid)
     r = b["residents"][name]
+    r["finished"] = dt.datetime.now().isoformat(timespec="seconds")
     if r["status"] == "stopping":
         r["status"] = "stopped"
+        r["error"] = "You stopped this audit."
         save(b)
         return r
     if not ok:
         r["status"] = "failed"
+        r["error"] = _readable(bid, run.error or "Claude stopped without saving the form.")
         save(b)
         return r
     # ---- redaction out: on this computer only ----
@@ -269,6 +290,7 @@ def run_resident(bid: str, name: str, on_run=None) -> dict:
     except Exception as e:
         log(bid, label, f"! Putting the real details back failed: {type(e).__name__}: {e}")
         r["status"] = "failed"
+        r["error"] = f"The form was made, but putting the real names back failed: {type(e).__name__}: {e}"
         save(b)
         return r
     shutil.copy(final, d / "private" / final.name)
@@ -300,6 +322,77 @@ def run_resident(bid: str, name: str, on_run=None) -> dict:
         except Exception as e:
             log(bid, label, f"! Scoring workbook could not be written: {type(e).__name__}: {e}")
     return r
+
+
+def _readable(bid: str, text: str) -> str:
+    """Error text shown on this computer, with the real names back in."""
+    try:
+        display = json.loads((bdir(bid) / "private" / "key.json").read_text(encoding="utf-8"))["display"]
+        return reid_text(text, display)
+    except Exception:
+        return text
+
+
+def write_report(bid: str) -> Path | None:
+    """The delivered report: one page in Completed Audits saying what came out of the round,
+    what did not and why. Rewritten every time something in the round finishes."""
+    import html
+    b = load(bid)
+    out = out_dir(b)
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return None
+    esc = html.escape
+    rows, done, failed = [], 0, 0
+    for name, r in sorted(b["residents"].items()):
+        st = r.get("status")
+        done += st == "done"
+        failed += st in ("failed", "empty", "stopped")
+        form = Path(r["final"]).name if r.get("final") and Path(r["final"]).exists() else ""
+        word = {"done": "Delivered", "failed": "Not finished", "empty": "Nothing to audit", "stopped": "Stopped",
+                "running": "In progress", "queued": "Waiting its turn", "check": "Waiting for your check",
+                "blocked": "Blocked by redaction"}.get(st, st or "")
+        band = r.get("rating") or ""
+        score = f"{r['total']:.0f}/100" if isinstance(r.get("total"), (int, float)) else ""
+        link = f'<a href="{esc(form)}">{esc(form)}</a>' if form else ""
+        why = esc(r.get("error") or "")
+        rows.append(f"<tr class='{esc(st or '')}'><td>{esc(name)}</td><td>{esc(word)}</td>"
+                    f"<td><span class='band {esc(band.lower())}'>{esc(band)}</span></td><td>{score}</td>"
+                    f"<td>{link}</td><td class='why'>{why}</td></tr>")
+    extras = []
+    if b.get("scorebook") and Path(b["scorebook"]).exists():
+        sb = Path(b["scorebook"])
+        extras.append(f'<li>Scores workbook: <a href="{esc(sb.as_uri())}">{esc(sb.name)}</a></li>')
+    fb = b.get("feedback") or {}
+    if fb.get("final") and Path(fb["final"]).exists():
+        extras.append(f'<li>Overall Feedback Form: <a href="{esc(Path(fb["final"]).name)}">{esc(Path(fb["final"]).name)}</a></li>')
+    elif fb.get("status") in ("failed", "stopped"):
+        extras.append(f"<li>Overall Feedback Form: not finished. {esc(fb.get('error') or '')}</li>")
+    elif fb.get("status") in ("queued", "running"):
+        extras.append("<li>Overall Feedback Form: being written.</li>")
+    total = len(b["residents"])
+    title = f"Delivered report - {b.get('ma') or 'Round'} - {b.get('date', '')}"
+    page = f"""<!doctype html><html><head><meta charset="utf-8"><title>{esc(title)}</title><style>
+body{{font:15px/1.5 Aptos,Segoe UI,sans-serif;color:#1d2a33;max-width:1000px;margin:32px auto;padding:0 20px}}
+h1{{font-size:22px;margin:0 0 4px}} p.sub{{color:#5b6b75;margin:0 0 20px}}
+table{{border-collapse:collapse;width:100%}} th,td{{text-align:left;padding:8px 10px;border-bottom:1px solid #dfe5e8;vertical-align:top}}
+th{{font-size:13px;color:#5b6b75;font-weight:600}} td.why{{color:#8a2d1f;font-size:13px;max-width:380px}}
+.band{{padding:1px 8px;border-radius:10px;font-size:13px}} .gold{{background:#f3e3a6}} .green{{background:#cfe9d4}}
+.amber{{background:#f8d9a8}} .red{{background:#f3c1b8}} tr.done td:nth-child(2){{color:#1f6b3a;font-weight:600}}
+a{{color:#1b5e8c}} ul{{padding-left:20px}}</style></head><body>
+<h1>{esc(title)}</h1>
+<p class="sub">{done} of {total} delivered{f", {failed} not finished" if failed else ""}. Updated {dt.datetime.now():%d/%m/%Y %H:%M}.</p>
+<table><tr><th>Resident</th><th>Result</th><th>Band</th><th>Score</th><th>Form</th><th>Why not finished</th></tr>
+{''.join(rows)}</table>{"<h2 style='font-size:17px;margin-top:28px'>Round documents</h2><ul>" + "".join(extras) + "</ul>" if extras else ""}
+</body></html>"""
+    path = report_path(b)
+    path.write_text(page, encoding="utf-8")
+    return path
+
+
+def report_path(b: dict) -> Path:
+    return out_dir(b) / f"Delivered report - {safe_name(b.get('ma') or 'Round')}.html"
 
 
 def out_dir(b: dict) -> Path:
@@ -389,6 +482,7 @@ def run_feedback(bid: str, on_run=None) -> dict:
                          settings()["output_dir"], str(out_dir(b))],
     }
     fb.update(status="running", started=dt.datetime.now().isoformat(timespec="seconds"))
+    fb.pop("error", None)
     save(b)
     run = runner.Run(job, settings(), lambda line: log(bid, "_round", line))
     if on_run:
@@ -397,15 +491,18 @@ def run_feedback(bid: str, on_run=None) -> dict:
         ok = run.start()
     except Exception as e:
         log(bid, "_round", f"! {type(e).__name__}: {e}")
+        run.error = run.error or f"The app hit an error: {type(e).__name__}: {e}"
         ok = False
     b = load(bid)
     fb = b["feedback"]
     if fb.get("status") == "stopping":
         fb["status"] = "stopped"
+        fb["error"] = "You stopped the feedback form."
         save(b)
         return fb
     if not ok:
         fb["status"] = "failed"
+        fb["error"] = _readable(bid, run.error or "Claude stopped without saving the feedback form.")
         save(b)
         return fb
     final = _unique(out_dir(b) / f"Overall Feedback Form - {safe_name(b['ma'] or 'Round')}.docx")
@@ -415,6 +512,7 @@ def run_feedback(bid: str, on_run=None) -> dict:
     except Exception as e:
         log(bid, "_round", f"! Putting the real details back failed: {type(e).__name__}: {e}")
         fb["status"] = "failed"
+        fb["error"] = f"The form was made, but putting the real names back failed: {type(e).__name__}: {e}"
         save(b)
         return fb
     display = json.loads((d / "private" / "key.json").read_text(encoding="utf-8"))["display"]

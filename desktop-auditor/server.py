@@ -108,11 +108,29 @@ def worker():
         except Exception as e:
             try:
                 pl.log(bid, "", f"! {type(e).__name__}: {e}")
+                _mark_failed(bid, kind, name, f"The app hit an error: {type(e).__name__}: {e}")
             except Exception:
                 pass
         finally:
             with lock:
                 current.update(run=None, where=None)
+            if kind in ("redact", "audit", "feedback"):
+                try:
+                    pl.write_report(bid)
+                except Exception:
+                    pass
+
+
+def _mark_failed(bid, kind, name, why):
+    """Nothing is ever left showing 'running' after its job has ended."""
+    b = pl.load(bid)
+    if kind == "audit" and name in b["residents"] and b["residents"][name]["status"] in ("running", "stopping", "queued"):
+        b["residents"][name].update(status="failed", error=why)
+    elif kind == "feedback" and (b.get("feedback") or {}).get("status") in ("running", "stopping", "queued"):
+        b["feedback"].update(status="failed", error=why)
+    elif kind == "redact" and b["status"] == "redacting":
+        b.update(status="failed", error=why)
+    pl.save(b)
 
 
 _inbox_last: dict = {}
@@ -164,12 +182,14 @@ def recover():
         for name, r in b["residents"].items():
             if r["status"] in ("running", "stopping"):
                 r["status"] = "failed"
+                r["error"] = "The app was closed or the computer restarted while this was running. Press Retry."
                 changed = True
             elif r["status"] == "queued":
                 tasks.put(("audit", b["id"], name))
         fb = b.get("feedback") or {}
         if fb.get("status") in ("running", "stopping"):
             fb["status"] = "failed"
+            fb["error"] = "The app was closed or the computer restarted while this was running. Press Retry."
             changed = True
         elif fb.get("status") == "queued":
             tasks.put(("feedback", b["id"], None))
@@ -243,10 +263,12 @@ def state():
         fb = b.get("feedback") or {}
         batches.append({"id": b["id"], "created": b["created"], "status": b["status"], "ma": b["ma"],
                         "date": b.get("date"), "source": b.get("source"), "feedback": fb.get("status"),
+                        "error": b.get("error"), "feedback_error": fb.get("error"),
                         "has_scores": bool(b.get("scorebook")),
                         "residents": [{"name": n, "label": r.get("label"), "status": r["status"],
                                        "rating": r.get("rating"), "total": r.get("total"),
-                                       "finished": r.get("finished"),
+                                       "finished": r.get("finished"), "started": r.get("started"),
+                                       "error": r.get("error"),
                                        "activity": pl.activity(b["id"], (r.get("label") or "").strip("[]"))
                                        if r["status"] in ("running", "stopping") else None}
                                       for n, r in b["residents"].items()]})
@@ -339,6 +361,48 @@ DOC_WORDS = re.compile(r"(?i)session|support|plan|risk|wr[-_ ]?\d|evidence|doc|l
                        r"scan|photo|sign|week|month|missed|warning|referr|assess|20\d\d|\d{1,2}[-_.]\d{1,2}")
 
 
+DUP_SUFFIX = re.compile(r"\s*[\(\[]\d+[\)\]]$|\s*-\s*copy(\s*\d+)?$|\s+copy$", re.I)
+
+
+def unpack_zips(root: Path) -> list[str]:
+    """Open every .zip anywhere under root, in place. "Sam_File.zip" becomes a folder
+    "Sam_File" next to it; "Sam_File (1).zip" goes into the same folder, so a file
+    downloaded twice is one resident, not two. Zips inside zips are opened too.
+    Returns the zips that could not be opened."""
+    bad: dict[Path, str] = {}
+    for _ in range(4):  # zips inside zips, a few levels deep
+        todo = [z for z in sorted(root.rglob("*")) if z.is_file() and z.suffix.lower() == ".zip" and z not in bad]
+        if not todo:
+            break
+        for z in todo:
+            try:
+                _unzip_one(z)
+                z.unlink()
+            except (zipfile.BadZipFile, RuntimeError, OSError, ValueError) as e:
+                bad[z] = f"{z.name} ({e})"
+    return list(bad.values())
+
+
+def _unzip_one(z: Path):
+    dest = z.parent / (DUP_SUFFIX.sub("", z.stem).strip() or z.stem)
+    with zipfile.ZipFile(z) as zf:
+        infos = [i for i in zf.infolist() if not i.is_dir() and not i.filename.startswith("__MACOSX")
+                 and not Path(i.filename).name.startswith((".", "~$"))]
+        rels = [safe_rel(i.filename) for i in infos]
+        # a zip that holds just one folder: use what is inside it
+        if rels and len({r.parts[0] for r in rels}) == 1 and all(len(r.parts) > 1 for r in rels):
+            rels = [Path(*r.parts[1:]) for r in rels]
+        for info, rel in zip(infos, rels):
+            out = dest / rel
+            data = zf.read(info)
+            if out.exists():
+                if out.read_bytes() == data:
+                    continue  # the same file again, from a duplicate download
+                out = out.with_name(f"{out.stem} (2){out.suffix}")
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_bytes(data)
+
+
 def _kids(root: Path):
     items = [p for p in root.iterdir() if not p.name.startswith(".") and p.name.lower() not in SKIP_NAMES
              and not p.name.startswith("~$")]
@@ -364,6 +428,9 @@ def _parse_several(v):
 
 def _batch_from_root(root: Path, several, ma: str, date: str, follow_up: bool, notes: str,
                      extra_names: str, source: str | None = None) -> dict:
+    bad_zips = unpack_zips(root)
+    if bad_zips:
+        raise HTTPException(400, "Could not open: " + "; ".join(bad_zips) + ". Unzip it in File Explorer and drop the folder.")
     files, dirs = _kids(root)
     if several is None:
         several = looks_like_several(root)
@@ -397,22 +464,7 @@ async def create_batch(files: list[UploadFile] = File(...), ma: str = Form(""), 
             dest = staged / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(await f.read())
-        files_now = [p for p in staged.rglob("*") if p.is_file()]
-        if len(files_now) == 1 and files_now[0].suffix.lower() == ".zip":
-            z = files_now[0]
-            with zipfile.ZipFile(z) as zf:
-                for info in zf.infolist():
-                    if info.is_dir() or info.filename.startswith("__MACOSX"):
-                        continue
-                    dest = staged / z.stem / safe_rel(info.filename)
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    dest.write_bytes(zf.read(info))
-            z.unlink()
-            inner = staged / z.stem
-            kids = list(inner.iterdir())
-            if len(kids) == 1 and kids[0].is_dir():
-                shutil.move(str(kids[0]), str(staged / kids[0].name))
-                shutil.rmtree(inner)
+        unpack_zips(staged)
         tops = [p for p in staged.iterdir() if not p.name.startswith(".")]
         if len(tops) == 1 and tops[0].is_dir():
             root = tops[0]
@@ -479,6 +531,7 @@ def batch_detail(bid: str):
     fb.pop("final", None)
     b["feedback"] = fb
     b["feedback_template"] = bool(pl.feedback_template_path())
+    b["has_report"] = pl.report_path(b).exists()
     return b
 
 
@@ -597,6 +650,8 @@ def open_round(bid: str, what: str = "folder"):
         target = Path(b["scorebook"])
     elif what == "feedback" and (b.get("feedback") or {}).get("final"):
         target = Path(b["feedback"]["final"])
+    elif what == "report":
+        target = pl.write_report(bid) or pl.report_path(b)
     else:
         target = pl.out_dir(b)
         target.mkdir(parents=True, exist_ok=True)
@@ -609,6 +664,9 @@ def open_round(bid: str, what: str = "folder"):
 @app.get("/api/batches/{bid}/download-round")
 def download_round(bid: str, what: str = "feedback"):
     b = get_batch(bid)
+    if what == "report":
+        p = pl.write_report(bid) or pl.report_path(b)
+        return FileResponse(p, media_type="text/html")
     p = Path(b["scorebook"]) if what == "scores" and b.get("scorebook") else \
         Path((b.get("feedback") or {}).get("final") or "")
     if not p.name or not p.exists():
