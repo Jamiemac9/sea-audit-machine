@@ -43,6 +43,12 @@ if "Overall Feedback Form" in prompt:   # the round's feedback form
         print(json.dumps(msg), flush=True)
     sys.exit(0)
 folder = re.search(r" at (.+?) and complete", prompt).group(1)
+if any("zz-no-form-zz" in q.read_text(errors="ignore").lower() for q in Path(folder).rglob("*.txt")):   # behave like a run that gives up
+    res = "I could not audit this file: the session records are missing, so I did not fill the form."
+    for msg in ({"type": "assistant", "message": {"content": [{"type": "text", "text": res}]}},
+                {"type": "result", "is_error": False, "result": res}):
+        print(json.dumps(msg), flush=True)
+    sys.exit(0)
 src = next(p for p in Path(folder).rglob("*.pdf") if "weekly budget" in extract_text(p))
 shots = Path(out).parent / "shots"; shots.mkdir(exist_ok=True)
 subprocess.run([sys.executable, str(tools / "crop.py"), "find", str(src), "1", "weekly budget", str(shots / "1.png")], check=True, capture_output=True)

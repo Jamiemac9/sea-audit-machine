@@ -47,6 +47,10 @@
   .lede { color:var(--ink-2); margin:0 0 24px; max-width:68ch; }
   .muted { color:var(--ink-3); font-size:14px; }
   .bad { color:var(--red); font-weight:700; }
+  .why { margin-top:10px; padding:10px 12px; border-left:3px solid var(--red); background:var(--red-bg); border-radius:4px; color:#6E1F13; font-size:14px; white-space:pre-wrap; }
+  .why b { display:block; margin-bottom:2px; }
+  .live { margin-top:6px; font-size:13px; color:#5b6b75; }
+  .live.slow { color:#8F4E0E; }
   .ok { color:var(--green); font-weight:700; }
   code.path { background:var(--mist); border:1px solid var(--line-2); padding:1px 6px; border-radius:var(--r-s); font-size:13px; word-break:break-all; user-select:all; font-family: var(--font); }
 
@@ -221,11 +225,20 @@ function stopOf(batchStatus, r) {
   if (r.status === 'queued') return {i:2, kind:'wait'};
   if (r.status === 'running' || r.status === 'stopping') return (r.activity && r.activity.step >= 8) ? {i:3, kind:'now'} : {i:2, kind:'now'};
   if (r.status === 'done') return {i:4, kind:'past'};
+  if (r.status === 'empty') return {i:0, kind:'err'};
   return {i:2, kind:'err'};
 }
 const statusWords = r => ({waiting:'Hiding names on this computer', check:'Ready for your check', blocked:'Some details could not be hidden',
   queued:'Waiting its turn', running: r.activity ? `${r.activity.doing} (${r.activity.step} of ${r.activity.of})` : 'Claude is auditing',
-  stopping:'Stopping', done:'Done', failed:'Did not finish', stopped:'Stopped'}[r.status] || r.status);
+  stopping:'Stopping', done:'Done', failed:'Did not finish', stopped:'Stopped', empty:'Nothing to audit'}[r.status] || r.status);
+const mins = sec => sec < 60 ? 'under a minute' : `${Math.round(sec/60)} min`;
+function liveLine(r) {
+  if (!['running','stopping'].includes(r.status)) return '';
+  const a = r.activity || {}, ran = r.started ? (Date.now() - new Date(r.started)) / 1000 : null;
+  const q = a.quiet_seconds, slow = q != null && q > 300;
+  return `<div class="live ${slow ? 'slow' : ''}">${ran != null ? `Running for ${mins(ran)}. ` : ''}${q != null ? `Last update ${q < 60 ? 'just now' : mins(q) + ' ago'}.` : ''}${slow ? ' No update for a while: it is usually reading a big file. If nothing changes for 30 minutes it stops itself and says why.' : ''}</div>`;
+}
+const whyBox = (title, text) => text ? `<div class="why"><b>${esc(title)}</b>${esc(text)}</div>` : '';
 
 function miniTrack(bs, r) {
   const s = stopOf(bs, r);
@@ -235,8 +248,9 @@ function miniTrack(bs, r) {
 function bigTrack(b) {
   const rs = Object.values(b.residents || {});
   const counts = [0,0,0,0,0]; let err = false, you = false, low = 4;
-  rs.forEach(r => { const s = stopOf(b.status, r); counts[s.i]++; if (s.kind==='err') err = true; if (s.kind==='you') you = true; low = Math.min(low, s.i) });
-  const allDone = rs.length && rs.every(r => r.status === 'done');
+  const live = rs.filter(r => r.status !== 'empty');   // a resident with nothing to audit doesn't hold the round back
+  live.forEach(r => { const s = stopOf(b.status, r); counts[s.i]++; if (s.kind==='err') err = true; if (s.kind==='you') you = true; low = Math.min(low, s.i) });
+  const allDone = live.length && live.every(r => r.status === 'done');
   const reach = allDone ? 4 : low;
   return `<div class="track">${STOPS.map((name, i) => {
       const cls = allDone || i < reach ? 'past' : i === reach ? (you && i===1 ? 'you' : err ? 'err' : 'now') : '';
@@ -255,8 +269,10 @@ function needs(s) {
     const name = b.ma || 'Audit round';
     if (b.status === 'check') out.push({t:`Check what Claude will see: ${esc(name)}, ${b.residents.length} ${b.residents.length===1?'resident':'residents'}`, a:`<a class="btn mark small" href="#/round/${b.id}">Check now</a>`});
     if (b.status === 'blocked') out.push({t:`Some details could not be hidden in ${esc(name)}`, a:`<a class="btn quiet small" href="#/round/${b.id}">Fix</a>`});
-    for (const r of b.residents) if (r.status === 'failed') out.push({t:`${esc(r.name)}'s audit did not finish`, a:`<a class="btn quiet small" href="#/round/${b.id}">See why</a>`});
-    if (b.feedback === 'failed') out.push({t:`The Overall Feedback Form for ${esc(name)} did not finish`, a:`<a class="btn quiet small" href="#/round/${b.id}">See why</a>`});
+    const short = t => t ? `<br><span class="muted">${esc(t.length > 140 ? t.slice(0, 140) + '...' : t)}</span>` : '';
+    for (const r of b.residents) if (['failed','empty'].includes(r.status)) out.push({t:`${esc(r.name)}: ${r.status==='empty' ? 'nothing to audit' : 'the audit did not finish'}${short(r.error)}`, a:`<a class="btn quiet small" href="#/round/${b.id}">See why</a>`});
+    if (b.feedback === 'failed') out.push({t:`The Overall Feedback Form for ${esc(name)} did not finish${short(b.feedback_error)}`, a:`<a class="btn quiet small" href="#/round/${b.id}">See why</a>`});
+    if (b.status === 'failed') out.push({t:`${esc(name)} could not be prepared${short(b.error)}`, a:`<a class="btn quiet small" href="#/round/${b.id}">See why</a>`});
   }
   return out;
 }
@@ -444,8 +460,9 @@ function renderRound() {
     $('main').innerHTML = `<div id="roundView" data-id="${b.id}">
       <div class="row" style="justify-content:space-between; align-items:flex-start">
         <div><h1 id="rTitle"></h1><div class="muted" id="rSub"></div></div>
-        <button class="btn quiet" onclick="openOut('folder')">Open Completed Audits</button>
+        <div class="row"><span id="rReport"></span><button class="btn quiet" onclick="openOut('folder')">Open Completed Audits</button></div>
       </div>
+      <div id="rErr"></div>
       <div class="panel" style="margin-top:20px" id="rTrack"></div>
       <div id="rCheck"></div>
       <div class="panel" style="margin-top:18px" id="rRes"></div>
@@ -453,11 +470,13 @@ function renderRound() {
       <div class="row" style="margin-top:22px"><button class="btn danger small" onclick="delRound()">Delete this round</button>
         <span class="muted">Removes the copies, the hidden version and the key from this computer. Finished forms stay in Completed Audits.</span></div>
     </div>`;
-    for (const k of ['rTitle','rSub','rTrack','rRes','rScores','rFeedback']) delete cache[k];
+    for (const k of ['rTitle','rSub','rTrack','rRes','rScores','rFeedback','rReport','rErr']) delete cache[k];
   }
   put('rTitle', esc(b.ma || 'Audit round'));
   put('rSub', `Started ${when(b.created)}. Saving to <code class="path">${esc(b.out_dir)}</code>`);
   put('rTrack', bigTrack(b));
+  put('rReport', b.has_report ? `<button class="btn" onclick="openOut('report')">Open delivered report</button>` : '');
+  put('rErr', b.status === 'failed' ? `<div class="panel" style="margin-top:18px">${whyBox('This round could not be prepared', b.error || 'Something went wrong while hiding names.')}</div>` : '');
   renderCheck(b);
   const rs = Object.entries(b.residents);
   if (put('rRes', `<h2>Residents</h2><ul class="res">${rs.map(([name, r]) => {
@@ -467,6 +486,8 @@ function renderRound() {
         ${miniTrack(b.status, r)}
         <div>${statusWords(r)}</div>
         <div class="row">${bandPill(r)}${scoreBar(r)}</div></div>
+      ${liveLine(r)}
+      ${['failed','empty','stopped'].includes(r.status) ? whyBox(r.status==='empty' ? 'Nothing to audit' : r.status==='stopped' ? 'Stopped' : 'Why it did not finish', r.error || 'No reason was recorded. Press Show progress to see the last steps.') : ''}
       <div class="row acts">
         ${r.has_final ? `<button class="btn small" onclick="openLocal('${L}',false)">Open in Word</button><button class="btn quiet small" onclick="openLocal('${L}',true)">Show in folder</button><a class="btn quiet small" href="/api/batches/${b.id}/download/${L}">Download</a>` : ''}
         ${['running','queued'].includes(r.status) ? `<button class="btn quiet small" onclick="act('stop','${L}')">Stop</button>` : ''}
@@ -488,7 +509,7 @@ function renderRound() {
     done:'Done.', failed:'Did not finish.', stopped:'Stopped.', stopping:'Stopping.'}[st] || st;
   if (put('rFeedback', `<h2>Overall Feedback Form</h2>${!b.feedback_template
       ? `<p class="muted">Put the blank Overall Feedback Form in the template folder (see Setup) and it is written for every round.</p>`
-      : `<p>${fbWords}</p><div class="row">
+      : `<p>${fbWords}</p>${['failed','stopped'].includes(st) ? whyBox('Why it did not finish', fb.error || 'No reason was recorded. Press Show progress.') : ''}<div class="row">
         ${fb.has_final ? `<button class="btn" onclick="openOut('feedback')">Open in Word</button><a class="btn quiet" href="/api/batches/${b.id}/download-round?what=feedback">Download</a>` : ''}
         ${['running','queued'].includes(st) ? `<button class="btn quiet small" onclick="fbAct('stop')">Stop</button>` : ''}
         ${['failed','stopped','done'].includes(st) || (st==='waiting' && rs.some(([, r]) => r.status==='done')) ? `<button class="btn quiet small" onclick="fbAct('run')">${st==='done' ? 'Write it again' : 'Write it now'}</button>` : ''}
@@ -513,6 +534,7 @@ function renderCheck(b) {
        : `<span class="ok">Every hidden detail was searched for again in the copy, and none were left.</span> Look through the copies below, then send it.`}</p>
     <div class="facts">${hiddenFacts(rep)}</div>
     ${!rep.ner ? `<p class="bad">The name finder is off, so only resident names and names you listed were hidden.</p>` : ''}
+    ${Object.entries(b.residents).filter(([, r]) => r.status==='empty').map(([n, r]) => whyBox(`${n} will be skipped`, r.error)).join('')}
     ${rep.held_back.length ? `<p><b>Not sent to Claude</b>, because these could not be hidden safely. Check them yourself:</p><ul>${rep.held_back.map(f => `<li>${esc(f.file)}: ${esc(f.reason||'')}</li>`).join('')}</ul>` : ''}
     ${pn.length ? `<p style="margin-bottom:0"><b>These might still be names.</b> Tick any that are, then hide them.</p><div class="names">${pn.map(n => `<label><input type="checkbox" class="pn" value="${esc(n)}"> ${esc(n)}</label>`).join('')}</div>` : ''}
     <label class="field" for="moreNames">Anything else to hide? One per line</label>

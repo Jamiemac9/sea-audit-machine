@@ -12,6 +12,8 @@ import os
 import re
 import shutil
 import subprocess
+import time
+import threading
 import sys
 from pathlib import Path
 
@@ -135,6 +137,8 @@ class Run:
         self.proc: subprocess.Popen | None = None
         self.result_text = ""
         self.ok = False
+        self.error = ""          # plain reason when the run ends without a form
+        self.last_output = time.time()
 
     def command(self, claude: str, runtime: Path) -> list[str]:
         job = self.job
@@ -158,6 +162,7 @@ class Run:
         if problems:
             for p in problems:
                 self.on_line("! " + p)
+            self.error = " ".join(problems)
             return False
         runtime = build_runtime(self.job)
         env = dict(os.environ)
@@ -167,7 +172,10 @@ class Run:
         self.proc = subprocess.Popen(self.command(claude, runtime), cwd=runtime, env=env,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                      text=True, encoding="utf-8", errors="replace", bufsize=1, **NO_WINDOW)
+        idle = float(self.settings.get("idle_minutes") or 30) * 60
+        threading.Thread(target=self._watch, args=(idle,), daemon=True).start()
         for raw in self.proc.stdout:
+            self.last_output = time.time()
             log.write(raw)
             self._handle(raw.strip())
         self.proc.wait()
@@ -175,10 +183,25 @@ class Run:
         self.ok = self.proc.returncode == 0 and Path(self.job["output"]).exists()
         if self.ok:
             self.on_line(f"Done: {self.job['output']}")
-        else:
-            self.on_line(f"! Finished without a saved form (exit {self.proc.returncode}). "
-                         f"See run-log.jsonl in {self.job['work']}")
-        return self.ok
+            return True
+        if not self.error:
+            said = re.sub(r"\s+", " ", self.result_text).strip()
+            self.error = ("Claude finished but did not save the form. It said: " + said[:600]) if said else \
+                f"Claude stopped (exit {self.proc.returncode}) without saving the form."
+        self.on_line("! " + self.error)
+        self.on_line(f"! Full run log: {self.job['work']}\\run-log.jsonl")
+        return False
+
+    def _watch(self, idle: float):
+        """Stop a run that has gone silent, so a stuck audit fails with a reason instead of hanging."""
+        while self.proc and self.proc.poll() is None:
+            time.sleep(15)
+            if time.time() - self.last_output > idle:
+                self.error = (f"Claude went quiet for {int(idle // 60)} minutes, so the audit was stopped. "
+                              "Press Retry. If it happens again, the file may be too big: split it.")
+                self.on_line("! " + self.error)
+                self.stop()
+                return
 
     def stop(self):
         if self.proc and self.proc.poll() is None:
@@ -204,7 +227,10 @@ class Run:
         elif kind == "result":
             self.result_text = msg.get("result") or ""
             if msg.get("is_error"):
-                self.on_line("! " + (self.result_text or "Claude Code reported an error"))
+                self.error = self.result_text or "Claude Code reported an error"
+                if re.search(r"(?i)usage limit|rate limit|limit reached|overloaded", self.error):
+                    self.error = "Your Claude usage limit was reached. Wait for it to reset, then press Retry. (" + self.error[:200] + ")"
+                self.on_line("! " + self.error)
                 if re.search(r"(?i)auth|log ?in|credential", self.result_text):
                     self.on_line("! Open Terminal (Mac) or Command Prompt (Windows), type  claude  and "
                                  "log in once with your Claude account, then press Start again.")
