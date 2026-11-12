@@ -240,9 +240,16 @@ def state():
     batches = []
     for bf in pl.BATCHES.glob("*/batch.json"):
         b = json.loads(bf.read_text(encoding="utf-8"))
+        fb = b.get("feedback") or {}
         batches.append({"id": b["id"], "created": b["created"], "status": b["status"], "ma": b["ma"],
+                        "date": b.get("date"), "source": b.get("source"), "feedback": fb.get("status"),
+                        "has_scores": bool(b.get("scorebook")),
                         "residents": [{"name": n, "label": r.get("label"), "status": r["status"],
-                                       "rating": r.get("rating")} for n, r in b["residents"].items()]})
+                                       "rating": r.get("rating"), "total": r.get("total"),
+                                       "finished": r.get("finished"),
+                                       "activity": pl.activity(b["id"], (r.get("label") or "").strip("[]"))
+                                       if r["status"] in ("running", "stopping") else None}
+                                      for n, r in b["residents"].items()]})
     batches.sort(key=lambda b: b["created"], reverse=True)
     return {
         "template": t.name if t else None,
@@ -456,6 +463,8 @@ def batch_detail(bid: str):
     b = get_batch(bid)
     b["preview"] = pl.preview_files(bid) if b["status"] != "redacting" else []
     for r in b["residents"].values():
+        if r["status"] in ("running", "stopping"):
+            r["activity"] = pl.activity(bid, (r.get("label") or "").strip("[]"))
         r["final_name"] = Path(r["final"]).name if r.get("final") else None
         r["has_final"] = bool(r.get("final")) and Path(r["final"]).exists()
         r.pop("final", None)
@@ -465,6 +474,8 @@ def batch_detail(bid: str):
     fb = b.get("feedback") or {}
     fb["has_final"] = bool(fb.get("final")) and Path(fb["final"]).exists()
     fb["final_name"] = Path(fb["final"]).name if fb.get("final") else None
+    if fb.get("status") == "running":
+        fb["activity"] = pl.activity(bid, "_round")
     fb.pop("final", None)
     b["feedback"] = fb
     b["feedback_template"] = bool(pl.feedback_template_path())
