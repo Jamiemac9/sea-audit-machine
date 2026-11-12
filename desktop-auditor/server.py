@@ -143,7 +143,8 @@ _login = {"at": 0.0, "value": None}
 
 
 def login():
-    if time.time() - _login["at"] > 60 or _login["value"] is None:
+    stale = 60 if (_login["value"] or {}).get("loggedIn") else 10
+    if time.time() - _login["at"] > stale or _login["value"] is None:
         claude = runner.find_claude(pl.settings().get("claude_path", ""))
         _login.update(at=time.time(), value=runner.login_status(claude))
     return _login["value"]
@@ -187,6 +188,7 @@ def state():
     batches.sort(key=lambda b: b["created"], reverse=True)
     return {
         "template": t.name if t else None,
+        "template_others": [p.name for p in pl.template_files() if not t or p != t],
         "reference": sorted(p.name for p in pl.REFERENCE.iterdir() if p.is_file()),
         "reference_held_back": [f["file"] for f in ref["files"] if f.get("status") == "held back"],
         "reference_leaks": len(ref["leaks"]),
@@ -212,6 +214,25 @@ def set_settings(body: dict = Body(...)):
     if "check_before_sending" in body:
         s["check_before_sending"] = bool(body["check_before_sending"])
     runner.save_settings(s)
+    return {"ok": True}
+
+
+@app.post("/api/login")
+def claude_login():
+    """Open a terminal window on this computer that signs Claude Code in (a browser page opens)."""
+    if not LOCAL:
+        raise HTTPException(400, "Only on this computer")
+    claude = runner.find_claude(pl.settings().get("claude_path", ""))
+    if not claude:
+        raise HTTPException(400, "Claude Code is not installed. Run the installer again.")
+    if platform.system() == "Windows":
+        subprocess.Popen(["cmd", "/c", "start", "Claude login", "cmd", "/k", claude, "auth", "login"])
+    elif platform.system() == "Darwin":
+        subprocess.run(["osascript", "-e", f'tell application "Terminal" to do script "\\"{claude}\\" auth login"',
+                        "-e", 'tell application "Terminal" to activate'])
+    else:
+        raise HTTPException(400, "Run: claude auth login")
+    _login["at"] = 0.0  # check again soon
     return {"ok": True}
 
 
