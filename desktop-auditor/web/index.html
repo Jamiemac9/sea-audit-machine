@@ -319,7 +319,7 @@ function roundLine(b) {
     : `${d} of ${live.length} delivered${b.feedback === 'done' ? ', with the feedback form' : ''}`;
   return `<li><div><a class="name" href="#/round/${b.id}">${esc(b.ma || b.folder_name || 'Audit round')}</a><div class="muted">${when(b.created)}</div></div>
     <div><div class="row" style="justify-content:space-between"><span>${word}</span><span class="muted">${pct}%</span></div><div class="progress"><i style="width:${pct}%"></i></div></div>
-    <div class="row">${b.has_report ? `<button class="btn small" onclick="openRound('${b.id}','report')">Report</button>` : ''}<button class="btn quiet small" onclick="openRound('${b.id}','folder')">Folder</button></div></li>`;
+    <div class="row">${b.has_report ? `<a class="btn small" target="_blank" href="/api/batches/${b.id}/download-round?what=report">Report</a>` : ''}<button class="btn quiet small" onclick="openRound('${b.id}','folder')">Folder</button></div></li>`;
 }
 function formSlots(s) {
   const slot = (ok, name, kind) => `<div class="form-slot ${ok ? '' : 'missing'}"><span class="tick">${ok ? '✓' : '!'}</span>
@@ -415,7 +415,9 @@ function renderRound() {
   put('rTitle', esc(b.ma || 'Audit round'));
   put('rSub', `Started ${when(b.created)}. Saving to <code class="path">${esc(b.out_dir)}</code>`);
   put('rTrack', bigTrack(b));
-  put('rReport', b.has_report ? `<button class="btn" onclick="openOut('report')">Open delivered report</button>` : '');
+  put('rReport', (b.has_report ? `<a class="btn" target="_blank" href="/api/batches/${b.id}/download-round?what=report">Open delivered report</a>` : '')
+    + (!Object.values(b.residents).some(r => ['running','stopping'].includes(r.status)) && b.status !== 'redacting'
+       ? `<button class="btn quiet" onclick="restartRound()" title="Builds the round again from the files you gave it">Start again</button>` : ''));
   put('rErr', b.status === 'failed' ? `<div class="panel" style="margin-top:18px">${whyBox('This round could not be prepared', b.error || 'Something went wrong while hiding names.')}</div>` : '');
   renderCheck(b);
   const rs = Object.entries(b.residents);
@@ -530,6 +532,10 @@ async function act(a, L) { try { await post(`/api/batches/${D.id}/${a}/${L}`); t
 async function fbAct(a) { try { await post(`/api/batches/${D.id}/feedback/${a}`); toast(a === 'stop' ? 'Stopping.' : 'Writing the Overall Feedback Form.') } catch(e) { toast(e.message) } tick() }
 async function openLocal(L, folder) { try { await post(`/api/batches/${D.id}/open/${L}?folder=${folder}`) } catch(e) { toast(e.message) } }
 async function openOut(what) { try { await post(`/api/batches/${D.id}/open-round?what=${what}`) } catch(e) { toast(e.message) } }
+async function restartRound() {
+  if (!confirm('Start this round again from the files it was given? Zips are opened and residents split up. Finished forms already saved stay where they are.')) return;
+  try { const r = await post(`/api/batches/${D.id}/restart`); location.hash = '#/round/' + r.id; toast('Started again.') } catch(e) { toast(e.message) }
+}
 async function delRound() {
   if (!confirm('Delete this round from this computer? The copies, the hidden version and the key are removed. Finished forms in Completed Audits stay.')) return;
   try { await api(`/api/batches/${D.id}`, {method:'DELETE'}) } catch(e) { return toast(e.message) }

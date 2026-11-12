@@ -404,7 +404,7 @@ def write_report(bid: str) -> Path | None:
     elif fb.get("status") in ("queued", "running"):
         extras.append("<li>Overall Feedback Form: being written.</li>")
     total = len(b["residents"])
-    title = f"Delivered report - {b.get('ma') or 'Round'} - {b.get('date', '')}"
+    title = f"Delivered report - {b.get('ma') or b.get('folder_name') or 'Round'} - {b.get('date', '')}"
     page = f"""<!doctype html><html><head><meta charset="utf-8"><title>{esc(title)}</title><style>
 body{{font:15px/1.5 Aptos,Segoe UI,sans-serif;color:#1d2a33;max-width:1000px;margin:32px auto;padding:0 20px}}
 h1{{font-size:22px;margin:0 0 4px}} p.sub{{color:#5b6b75;margin:0 0 20px}}
@@ -424,7 +424,7 @@ a{{color:#1b5e8c}} ul{{padding-left:20px}}</style></head><body>
 
 
 def report_path(b: dict) -> Path:
-    return out_dir(b) / f"Delivered report - {safe_name(b.get('ma') or 'Round')}.html"
+    return out_dir(b) / f"Delivered report - {safe_name(b.get('ma') or b.get('folder_name') or 'Round')}.html"
 
 
 def out_dir(b: dict) -> Path:
