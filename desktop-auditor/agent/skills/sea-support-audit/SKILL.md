@@ -41,6 +41,37 @@ inflates one assessment and depresses the other.
    - **Creation dates:** check PDF metadata, docx core.xml and image EXIF, but **do not report that records appear to have been created after the session date**. Raise it only where it comes with duplicates, copy-and-paste between sessions or residents, or fabrication. Batch-created paperwork on its own is a recording habit, not a finding.
 4. Compare: Contact & Support Log v session records (missing sessions, missed sessions logged as support), review due dates v review columns, goals worked on v goals selected on WR-11.
 
+## Do we believe support is happening?
+
+This is the key question behind every file, and it is asked before anything is written up.
+A file can be complete and still not show real support.
+
+- **Repetition is the common theme to look for.** The same opening, the same "discussed…"
+  line, the same goal text or the same outcome repeated across sessions, weeks or residents
+  means the record is not describing what happened that day. Sentence-level duplication
+  between sessions or residents, identical reviews and the same photo used twice are the
+  strongest form of it.
+- **Real support reads as specific:** what the resident said, what was done with them,
+  what came of it, and what happens next, different from one week to the next.
+- Say plainly in General Notes when records do not read as genuine, and why, with the
+  screenshot. Where records cannot be relied on, the file is Red (see Rating), because they
+  evidence nothing.
+
+## Do the goals fit the person, and does the support match the goals?
+
+Check both, for every file:
+
+1. **Goals against needs.** Compare the needs and risks in the WR-01 and WR-09 with the
+   goals selected on the WR-11. A need or risk with no matching goal, or a goal with no
+   need behind it, is a finding.
+2. **Support against goals.** Compare what the sessions actually delivered with the goals.
+   Support that keeps returning to things that are not goals, or goals that no session
+   touches, is a finding. The strongest files cross over: the need is identified, the goal
+   is set, and the sessions deliver against it.
+
+Mismatches between goals and needs are documentation points (General Notes, WR-11); goals
+with no support delivered are support points (What support has been given / Next Steps).
+
 ## The support / documentation split
 
 Every finding belongs to one stream or the other, and it must land in the right place on the
@@ -68,6 +99,33 @@ form. Getting this wrong is the most common way a file reads as worse than it is
 
 ## Rating the file
 
+The file is scored with the **Audit Scoring Framework**: eight criteria, each scored 0 to 3
+(start at 2, the expected standard), weighted to a score out of 100, with three gates. The
+app's `score.py` tool does the arithmetic and gives the band; you give each score and the
+reason for it. Use the band it gives as the rating, unless the reasoning below clearly calls
+for another, in which case set an override with a written reason.
+
+| Criterion | Section | Weight | 3 | 2 (start here) | 1 | 0 |
+|---|---|---|---|---|---|---|
+| 1. Support delivered (WR-13, WR-14) | Support /50 | 15 | Clearly exceeds the hour, regular sessions | Hour clearly justified, regular sessions | Hour doubtful in places, or gaps | Not evidenced (caps at Amber) |
+| 2. Relevance (WR-13 against WR-01, 09, 11) | Support | 15 | Every session links to needs and goals | Mostly linked | Many sessions not linked | No link to needs (caps at Amber) |
+| 3. Progress and follow-up (WR-13 follow-up) | Support | 10 | Clear progression, every action revisited | Some progression and follow-up | Repetitive, little follow-up | Stalled, no follow-up |
+| 4. Quality of support (WR-13, evidence) | Support | 10 | Personalised, resident's voice throughout, reputable signposting, practical help, evidence trail | Personalised, some signposting or evidence | Generic or discussion only | Generic throughout, nothing practical |
+| 5. Needs and risk (WR-01, 09, 10) | Needs & planning /30 | 15 | Detailed and matching, valid scores, plan for every 5+ | Mostly accurate, matrix used | Gaps, all 0s or impossible scores | Missing (caps at Amber) |
+| 6. Support plan and reviews (WR-11, 12) | Needs & planning | 15 | 5 active goals, detailed action plans, reviews up to date | 5 goals mostly matching needs, reviews in date | Thin plans, goals not matching needs, or reviews late | Missing (caps at Amber) |
+| 7. Licence and Housing Benefit (WR-02, 04, 06, 07) | Tenancy & safety /20 | 10 | Accurate, complete and signed | Minor gap, such as a blank field | Wrong rent, address or details (blocks Gold) | Licence or HB form missing (caps at Amber) |
+| 8. Signatures and safety (whole file, WR-03, 05, 19, 21, 22) | Tenancy & safety | 10 | All signed and complete | 1 or 2 isolated gaps | Missing across several documents | No resident signatures anywhere (caps at Amber) |
+
+Gates: **Red gate** (support not happening or records that cannot be relied on: no sessions,
+no meaningful support, duplicated, copied or fabricated records) makes the file Red.
+**Critical document missing** caps it at Amber. **Critical document inaccurate** blocks Gold.
+Bands: Gold at 85 or above with criteria 1 to 4 all at 2 or more and criterion 7 at 2 or
+more; Amber below 60, or any cap; Green otherwise. Repetition and copied notes (see "Do we
+believe support is happening?") bring criteria 1 to 4 down, and where they mean the records
+cannot be relied on, set the Red gate.
+
+The reasoning behind the bands still holds:
+
 Both streams count towards the score and both are scored on their own merits. A poor
 document set holds a file back — Gold is not available unless everything is documented and
 evidenced as well as the support being meaningful. What marks a score **further down** is
@@ -84,6 +142,7 @@ Applying it:
 - Missing or unsigned documents plus a clear record of real support is **Amber**, not Red.
 - A complete document set with no meaningful support is **Red**, whatever the paperwork looks like.
 - Give the rating in the chat reply (it goes on the Overall Feedback form), not on Form A, and state the support position first in the reason.
+- Each criterion's reason is one or two plain sentences naming what you saw (document and date), so the scoring tab reads as a breakdown someone can follow.
 
 ## Filling the form (python-docx editing the OG docx)
 - Header: MA name as on licence, property address, audit date (DD/MM/YY), resident name, contact number ('Not recorded on file' if blank), move-in date.
@@ -110,7 +169,17 @@ position. Do not restate ratings, list documents or preview findings here.
 2–3 sentences of what was actually delivered, naming services, worksheets and evidence (e.g.
 'Supported to register with the GP (<GP practice name>)…', 'Completed a "Things That
 May Trigger Me" plan…'). Reads human: an outline of how and what support was given, no
-dates — dates and evidence detail belong in General Notes. Include themes worked on even if
+dates — dates and evidence detail belong in General Notes.
+
+Write it slightly conversationally, so it flows and explains: what the worker did with the
+resident, how, and what came of it, as one connected account rather than a list of
+activities. No fluff and no general statements: every sentence says something that
+happened. Where the support was practical, say so in those words, "practical, hands-on
+support", and say exactly what kind: e.g. "Practical, hands-on support to set up his
+Universal Credit journal, sitting with him to complete the first entries and showing him
+how to check for messages", "practical, hands-on support with shopping and cooking on a
+budget, going to the supermarket together and cooking a meal from the shopping list". Where
+support was discussion only, say that plainly rather than dressing it up. Include themes worked on even if
 not selected on WR-11 (e.g. Maintain Personal Hygiene & Housekeeping, Manage Substance
 Misuse). Do not count room checks as support. Cover only support delivered; anything not
 done or incomplete goes to Next Steps or General Notes.
@@ -154,7 +223,10 @@ lives.
 - Always screenshot: duplication, blank boxes, missing signatures/dates, signature in the wrong box, invalid or unsupported risk scores, blank review columns, generic RMPs, goals with no action plan, unanswered follow-up questions, signatures on missed sessions, log errors, reused or misdated evidence.
 
 ## Tone
-Professional, factual, constructive, specific (document code + date). Phrases from the house
+Professional, factual, constructive, specific (document code + date). Slightly
+conversational: the auditor explains what was found and why it matters, in sentences that
+follow on from each other, rather than clipped bullet-style statements. No fluff, no padding,
+no general praise or criticism without the evidence behind it. Phrases from the house
 style: 'It was identified that…', 'There is little evidence of…', 'Consideration should be
 given to…', 'Additional narrative would strengthen…', '…which casts doubt on the
 authenticity of the notes', 'Please ensure that all Risk Management Plans are tailored to the

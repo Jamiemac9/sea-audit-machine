@@ -1,7 +1,7 @@
 # Support Audit desktop run
 
 You are filling in one resident's Support Audit (Form A) for the auditor, exactly as it is
-done in chat. Nobody is watching this run and nobody can answer a question: where something
+done in chat, and scoring it with the Audit Scoring Framework. Nobody is watching this run and nobody can answer a question: where something
 is unclear, take the most reasonable reading, carry on, and say what you assumed in your
 final reply.
 
@@ -76,9 +76,17 @@ audits. Where the skill and a reference file disagree, the skill wins.
    you see overlapping the header in the check pages. Do not restyle, retype or
    rebuild anything the template already has: headers, footers, labels, centred underlined
    sub-headings. Run it.
-9. **Check it:** `"{{PY}}" "{{TOOLS}}/finish.py" "{{OUTPUT}}" "{{WORK}}"`, then look at
+9. **Score it** with the Audit Scoring Framework (in the skill under "Rating the file"):
+   write `{{WORK}}/score.json` in the shape shown at the top of `{{TOOLS}}/score.py`, a
+   score of 0 to 3 for each of the eight criteria with a one or two sentence reason naming
+   the document and date, the three gates with reasons, and an override only if the band
+   it gives is clearly wrong (with the reason). Run
+   `"{{PY}}" "{{TOOLS}}/score.py" "{{WORK}}/score.json"`. The final band it prints is the
+   rating. Also write `{{WORK}}/content.md` so it is complete: the Overall Feedback Form is
+   written from it later.
+10. **Check it:** `"{{PY}}" "{{TOOLS}}/finish.py" "{{OUTPUT}}" "{{WORK}}"`, then look at
    every page image in `{{WORK}}/check/`. Fix and re-run until every page is right.
-10. **Finish** with the reply described below, and write the same text to
+11. **Finish** with the reply described below, and write the same text to
     `{{WORK}}/result.md`.
 
 ## Boundaries
@@ -93,7 +101,7 @@ audits. Where the skill and a reference file disagree, the skill wins.
 Short, in this order:
 
 ```
-Rating: <Gold/Green/Amber/Red> - <support position first, then the document position>
+Rating: <final band from score.py> (<score>/100) - <support position first, then the document position>
 Main findings:
 - ...
 For you to check or screenshot yourself:

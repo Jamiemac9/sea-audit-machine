@@ -101,14 +101,14 @@ def build_runtime(job: dict) -> Path:
         deny += [f"{tool}(/{pattern})" for tool in ("Read", "Edit", "Write", "Glob", "Grep")]
     (runtime / ".claude" / "settings.json").write_text(json.dumps({"permissions": {"deny": deny}}, indent=2),
                                                        encoding="utf-8")
-    text = (AGENT_DIR / "CLAUDE.md").read_text(encoding="utf-8")
+    text = (AGENT_DIR / job.get("instructions", "CLAUDE.md")).read_text(encoding="utf-8")
     fields = {
-        "RESIDENT": job["folder"], "ROUND": job["round"], "TEMPLATE": job["template"],
+        "RESIDENT": job.get("folder", ""), "ROUND": job["round"], "AUDITS": job.get("audits", ""), "TEMPLATE": job["template"],
         "REFERENCE": job["reference"], "WORK": job["work"], "PY": Path(sys.executable).as_posix(),
         "TOOLS": (runtime / "tools").as_posix(), "OUTPUT": job["output"],
         "MA": job.get("ma") or "take it from the licence agreement in the file",
         "AUDIT_DATE": job["date"], "AUDIT_TYPE": "Follow-up audit" if job.get("follow_up") else "First audit (baseline)",
-        "NOTES": job.get("notes") or "none", "LABEL": job["label"],
+        "NOTES": job.get("notes") or "none", "LABEL": job.get("label", ""),
     }
     for k, v in fields.items():
         text = text.replace("{{" + k + "}}", str(v))
@@ -120,7 +120,7 @@ def check_job(job: dict, claude: str | None) -> list[str]:
     problems = []
     if not claude:
         problems.append("Claude Code is not installed or not found. See the README, step 2.")
-    if not Path(job["folder"]).is_dir():
+    if job.get("folder") and not Path(job["folder"]).is_dir():
         problems.append("The redacted copy of this resident's file is missing. Delete the audit and add it again.")
     if not Path(job["template"]).is_file():
         problems.append("Upload the blank Support_Audit_OG.docx first.")
@@ -138,15 +138,16 @@ class Run:
 
     def command(self, claude: str, runtime: Path) -> list[str]:
         job = self.job
-        prompt = (f"Audit the resident file of {job['label']} at {job['folder']} and complete Form A from the "
-                  f"blank form at {job['template']}, following CLAUDE.md and the sea-support-audit skill. "
-                  f"Save it as {job['output']}.")
+        prompt = job.get("prompt") or (
+            f"Audit the resident file of {job['label']} at {job['folder']} and complete Form A from the "
+            f"blank form at {job['template']}, following CLAUDE.md and the sea-support-audit skill. "
+            f"Save it as {job['output']}.")
         cmd = _cmd_prefix(claude) + [
             "-p", prompt, "--output-format", "stream-json", "--verbose",
             "--allowedTools", TOOLS_ALLOWED, "--disallowedTools", TOOLS_BLOCKED,
             "--permission-mode", "acceptEdits",
             "--add-dir", job["round"], str(Path(job["template"]).parent), job["reference"], job["work"],
-        ]
+        ] + sum((["--add-dir", d] for d in job.get("extra_dirs", [])), [])
         if self.settings.get("model"):
             cmd += ["--model", self.settings["model"]]
         return cmd

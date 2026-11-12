@@ -89,6 +89,18 @@ def worker():
                 with lock:
                     current["where"] = (bid, name)
                 pl.run_resident(bid, name, on_run=lambda r: current.update(run=r))
+                b = pl.load(bid)
+                if pl.round_ready_for_feedback(b):
+                    b["feedback"] = {"status": "queued"}
+                    pl.save(b)
+                    tasks.put(("feedback", bid, None))
+            elif kind == "feedback":
+                b = pl.load(bid)
+                if b.get("feedback", {}).get("status") != "queued":
+                    continue
+                with lock:
+                    current["where"] = (bid, "_round")
+                pl.run_feedback(bid, on_run=lambda r: current.update(run=r))
             elif kind == "reference":
                 pl.refresh_reference()
         except KeyError:
@@ -103,6 +115,46 @@ def worker():
                 current.update(run=None, where=None)
 
 
+_inbox_last: dict = {}
+
+
+def _inbox_seen() -> dict:
+    f = pl.HOME / "inbox_seen.json"
+    try:
+        return json.loads(f.read_text()) if f.exists() else {}
+    except Exception:
+        return {}
+
+
+def inbox_watcher():
+    """A folder dropped into SupportAudit/inbox starts a round on its own, once it has
+    finished copying (unchanged for two checks in a row). Each folder is picked up once."""
+    seen_file = pl.HOME / "inbox_seen.json"
+    while True:
+        time.sleep(10)
+        try:
+            seen = json.loads(seen_file.read_text()) if seen_file.exists() else {}
+            for d in sorted(pl.INBOX.iterdir()):
+                if not d.is_dir() or d.name.startswith((".", "_")) or d.name in seen:
+                    continue
+                files = [f for f in d.rglob("*") if f.is_file() and "Completed Audits" not in f.parts]
+                sig = (len(files), sum(f.stat().st_size for f in files))
+                if not files or _inbox_last.get(d.name) != sig:
+                    _inbox_last[d.name] = sig
+                    continue
+                if not pl.template_path():
+                    continue  # wait until the blank form is there
+                seen[d.name] = time.strftime("%Y-%m-%d %H:%M")
+                seen_file.write_text(json.dumps(seen, indent=1))
+                try:
+                    start_from_folder(d, None, ma=pl.settings().get("default_ma", ""))
+                except Exception as e:
+                    (d / "Completed Audits").mkdir(exist_ok=True)
+                    (d / "Completed Audits" / "Could not start.txt").write_text(str(e), encoding="utf-8")
+        except Exception:
+            pass
+
+
 def recover():
     for bf in sorted(pl.BATCHES.glob("*/batch.json"), key=lambda p: p.stat().st_mtime):
         b = json.loads(bf.read_text(encoding="utf-8"))
@@ -115,6 +167,12 @@ def recover():
                 changed = True
             elif r["status"] == "queued":
                 tasks.put(("audit", b["id"], name))
+        fb = b.get("feedback") or {}
+        if fb.get("status") in ("running", "stopping"):
+            fb["status"] = "failed"
+            changed = True
+        elif fb.get("status") == "queued":
+            tasks.put(("feedback", b["id"], None))
         if changed:
             pl.save(b)
 
@@ -188,7 +246,8 @@ def state():
     batches.sort(key=lambda b: b["created"], reverse=True)
     return {
         "template": t.name if t else None,
-        "template_others": [p.name for p in pl.template_files() if not t or p != t],
+        "template_others": [p.name for p in pl.template_files()
+                            if (not t or p != t) and p != pl.feedback_template_path()],
         "reference": sorted(p.name for p in pl.REFERENCE.iterdir() if p.is_file()),
         "reference_held_back": [f["file"] for f in ref["files"] if f.get("status") == "held back"],
         "reference_leaks": len(ref["leaks"]),
@@ -196,9 +255,11 @@ def state():
         "settings": {k: s[k] for k in ("hide_names", "output_dir", "check_before_sending")},
         "tools": {"name_finder": R._NLP is not None, "ocr": R._OCR, "office": bool(R.soffice())},
         "local": LOCAL,
-        "inbox": [{"name": p.name, "files": sum(1 for f in p.rglob("*") if f.is_file())}
+        "inbox": [{"name": p.name, "files": sum(1 for f in p.rglob("*") if f.is_file()),
+                   "picked": p.name in _inbox_seen()}
                   for p in sorted(pl.INBOX.iterdir()) if p.is_dir()],
         "folders": {"template": str(pl.TEMPLATE_DIR), "reference": str(pl.REFERENCE), "inbox": str(pl.INBOX)},
+        "feedback_template": (pl.feedback_template_path() or Path("")).name or None,
         "batches": batches,
     }
 
@@ -266,16 +327,48 @@ def delete_reference(name: str):
 
 # ---------- rounds ----------
 
-def _batch_from_root(root: Path, several: bool, ma: str, date: str, follow_up: bool, notes: str,
-                     extra_names: str) -> dict:
-    groups = ([p for p in sorted(root.iterdir()) if p.is_dir() and not p.name.startswith(".")]
-              if several else [root])
+SKIP_NAMES = {"completed audits", "desktop.ini", "thumbs.db"}
+DOC_WORDS = re.compile(r"(?i)session|support|plan|risk|wr[-_ ]?\d|evidence|doc|licen|review|log|contact|form|pack|"
+                       r"scan|photo|sign|week|month|missed|warning|referr|assess|20\d\d|\d{1,2}[-_.]\d{1,2}")
+
+
+def _kids(root: Path):
+    items = [p for p in root.iterdir() if not p.name.startswith(".") and p.name.lower() not in SKIP_NAMES
+             and not p.name.startswith("~$")]
+    return [p for p in items if p.is_file()], [p for p in items if p.is_dir()]
+
+
+def looks_like_several(root: Path) -> bool:
+    """A property folder holds one folder per resident and no loose documents. A resident's
+    own folder holds documents, or sub-folders named for documents (Sessions, Risk, 2026...)."""
+    files, dirs = _kids(root)
+    if files or len(dirs) < 2:
+        return False
+    named_like_documents = sum(bool(DOC_WORDS.search(d.name)) for d in dirs)
+    return named_like_documents < len(dirs) / 2
+
+
+def _parse_several(v):
+    if isinstance(v, bool):
+        return v
+    v = str(v or "").strip().lower()
+    return True if v in ("true", "several", "yes", "1") else False if v in ("false", "one", "no", "0") else None
+
+
+def _batch_from_root(root: Path, several, ma: str, date: str, follow_up: bool, notes: str,
+                     extra_names: str, source: str | None = None) -> dict:
+    files, dirs = _kids(root)
+    if several is None:
+        several = looks_like_several(root)
+    if not several and not files and len(dirs) == 1 and not DOC_WORDS.search(dirs[0].name):
+        root = dirs[0]  # a folder holding just one resident's folder
+    groups = (sorted(_kids(root)[1]) if several else [root])
     if not groups:
         raise HTTPException(400, "No resident folders found inside that folder.")
     if not any(f.is_file() for g in groups for f in g.rglob("*")):
         raise HTTPException(400, "That folder has no files in it.")
     names = [n.strip() for n in re.split(r"[\n,;]+", extra_names) if n.strip()]
-    b = pl.new_batch(groups, ma.strip(), date.strip(), follow_up, notes.strip(), names)
+    b = pl.new_batch(groups, ma.strip(), date.strip(), follow_up, notes.strip(), names, source)
     pl.log(b["id"], "", f"Added {len(groups)} resident file(s). Redacting on this computer...")
     tasks.put(("redact", b["id"], None))
     return {"id": b["id"]}
@@ -283,7 +376,7 @@ def _batch_from_root(root: Path, several: bool, ma: str, date: str, follow_up: b
 
 @app.post("/api/batches")
 async def create_batch(files: list[UploadFile] = File(...), ma: str = Form(""), date: str = Form(""),
-                       follow_up: bool = Form(False), notes: str = Form(""), several: bool = Form(False),
+                       follow_up: bool = Form(False), notes: str = Form(""), several: str = Form("auto"),
                        extra_names: str = Form(""), folder_name: str = Form("")):
     if not pl.template_path():
         raise HTTPException(400, "Put the blank form in the template folder first (step 1).")
@@ -322,7 +415,7 @@ async def create_batch(files: list[UploadFile] = File(...), ma: str = Form(""), 
             for p in tops:
                 if p != root:
                     shutil.move(str(p), str(root / p.name))
-        return _batch_from_root(root, several, ma, date, follow_up, notes, extra_names)
+        return _batch_from_root(root, _parse_several(several), ma, date, follow_up, notes, extra_names)
     finally:
         shutil.rmtree(staged, ignore_errors=True)
 
@@ -342,12 +435,18 @@ def create_batch_from_folder(body: dict = Body(...)):
     if not raw or not src.is_dir():
         raise HTTPException(400, f"Can't find that folder: {raw or '(empty)'}. In File Explorer, open the "
                                  "resident's folder, click the address bar, copy it and paste it here.")
+    return start_from_folder(src, _parse_several(body.get("several")), body.get("ma", ""), body.get("date", ""),
+                             bool(body.get("follow_up")), body.get("notes", ""), body.get("extra_names", ""))
+
+
+def start_from_folder(src: Path, several, ma="", date="", follow_up=False, notes="", extra_names="") -> dict:
+    """Copy a folder on this computer into a new round. Finished forms go back into
+    <that folder>/Completed Audits; the original files are never changed."""
     staged = pl.HOME / f"_upload_{uuid.uuid4().hex[:8]}"
     try:
-        shutil.copytree(src, staged / src.name, ignore=shutil.ignore_patterns(".*", "~$*", "desktop.ini", "Thumbs.db"))
-        return _batch_from_root(staged / src.name, bool(body.get("several")), body.get("ma", ""),
-                                body.get("date", ""), bool(body.get("follow_up")), body.get("notes", ""),
-                                body.get("extra_names", ""))
+        shutil.copytree(src, staged / src.name,
+                        ignore=shutil.ignore_patterns(".*", "~$*", "desktop.ini", "Thumbs.db", "Completed Audits"))
+        return _batch_from_root(staged / src.name, several, ma, date, follow_up, notes, extra_names, str(src))
     finally:
         shutil.rmtree(staged, ignore_errors=True)
 
@@ -360,6 +459,15 @@ def batch_detail(bid: str):
         r["final_name"] = Path(r["final"]).name if r.get("final") else None
         r["has_final"] = bool(r.get("final")) and Path(r["final"]).exists()
         r.pop("final", None)
+        r.pop("score", None)
+    b["out_dir"] = str(pl.out_dir(b))
+    b["scorebook_name"] = Path(b["scorebook"]).name if b.get("scorebook") else None
+    fb = b.get("feedback") or {}
+    fb["has_final"] = bool(fb.get("final")) and Path(fb["final"]).exists()
+    fb["final_name"] = Path(fb["final"]).name if fb.get("final") else None
+    fb.pop("final", None)
+    b["feedback"] = fb
+    b["feedback_template"] = bool(pl.feedback_template_path())
     return b
 
 
@@ -456,6 +564,77 @@ def open_local(bid: str, label: str, folder: bool = False):
     return {"ok": True}
 
 
+def _open(target: Path, folder: bool):
+    if not LOCAL:
+        raise HTTPException(400, "Only on this computer")
+    if platform.system() == "Darwin":
+        subprocess.run(["open", "-R", str(target)] if folder and target.is_file() else ["open", str(target)])
+    elif platform.system() == "Windows":
+        if folder and target.is_file():
+            subprocess.run(["explorer", "/select,", str(target)])
+        else:
+            os.startfile(str(target))  # type: ignore[attr-defined]
+    else:
+        subprocess.run(["xdg-open", str(target.parent if folder and target.is_file() else target)])
+
+
+@app.post("/api/batches/{bid}/open-round")
+def open_round(bid: str, what: str = "folder"):
+    """Open the round's Completed Audits folder, its scoring workbook or its feedback form."""
+    b = get_batch(bid)
+    if what == "scores" and b.get("scorebook"):
+        target = Path(b["scorebook"])
+    elif what == "feedback" and (b.get("feedback") or {}).get("final"):
+        target = Path(b["feedback"]["final"])
+    else:
+        target = pl.out_dir(b)
+        target.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        raise HTTPException(404, "Not there yet")
+    _open(target, False)
+    return {"ok": True}
+
+
+@app.get("/api/batches/{bid}/download-round")
+def download_round(bid: str, what: str = "feedback"):
+    b = get_batch(bid)
+    p = Path(b["scorebook"]) if what == "scores" and b.get("scorebook") else \
+        Path((b.get("feedback") or {}).get("final") or "")
+    if not p.name or not p.exists():
+        raise HTTPException(404, "Not there yet")
+    return FileResponse(p, filename=p.name)
+
+
+@app.post("/api/batches/{bid}/feedback/{action}")
+def feedback_action(bid: str, action: str):
+    b = get_batch(bid)
+    fb = b.setdefault("feedback", {})
+    if action == "run":
+        if fb.get("status") in ("queued", "running", "stopping"):
+            raise HTTPException(400, "Already running or waiting")
+        if not pl.feedback_template_path():
+            raise HTTPException(400, "Put the blank Overall Feedback Form in the template folder first.")
+        if not any(r["status"] == "done" for r in b["residents"].values()):
+            raise HTTPException(400, "No finished resident audits in this round yet.")
+        b["feedback"] = {"status": "queued"}
+        pl.save(b)
+        pl.log(bid, "_round", "\n--- Overall Feedback Form ---")
+        tasks.put(("feedback", bid, None))
+    elif action == "stop":
+        if fb.get("status") == "queued":
+            fb["status"] = "stopped"
+            pl.save(b)
+        elif fb.get("status") == "running":
+            fb["status"] = "stopping"
+            pl.save(b)
+            with lock:
+                if current["where"] == (bid, "_round") and current["run"]:
+                    current["run"].stop()
+    else:
+        raise HTTPException(404)
+    return {"ok": True}
+
+
 @app.post("/api/batches/{bid}/stop/{label}")
 def stop(bid: str, label: str):
     b = get_batch(bid)
@@ -479,6 +658,8 @@ def retry(bid: str, label: str):
     if r["status"] in ("running", "queued", "stopping"):
         raise HTTPException(400, "Already running or waiting")
     r["status"] = "queued"
+    if (b.get("feedback") or {}).get("status") not in ("running", "queued", "stopping"):
+        b["feedback"] = {"status": "waiting"}
     pl.save(b)
     pl.log(bid, label.strip("[]"), "\n--- Retry ---")
     tasks.put(("audit", bid, name))
@@ -490,9 +671,12 @@ def delete_batch(bid: str):
     b = get_batch(bid)
     if any(r["status"] in ("running", "stopping") for r in b["residents"].values()):
         raise HTTPException(400, "Stop the running audit first")
+    if (b.get("feedback") or {}).get("status") in ("running", "stopping"):
+        raise HTTPException(400, "Stop the Overall Feedback Form first")
     for r in b["residents"].values():
         if r["status"] == "queued":
             r["status"] = "stopped"
+    b.setdefault("feedback", {})["status"] = "stopped"
     pl.save(b)
     pl.delete(bid)
     return {"ok": True}
@@ -501,6 +685,7 @@ def delete_batch(bid: str):
 def main():
     recover()
     threading.Thread(target=worker, daemon=True).start()
+    threading.Thread(target=inbox_watcher, daemon=True).start()
     reference_changed()
     tasks.put(("reference", None, None))
     uvicorn.run(app, host=os.environ.get("SA_BIND", "127.0.0.1"), port=PORT, log_level="warning")
