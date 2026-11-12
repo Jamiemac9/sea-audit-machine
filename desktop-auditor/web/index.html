@@ -89,7 +89,8 @@
     <label for="localPath">Easiest: paste the resident's folder location</label>
     <div class="muted">In File Explorer, open the resident's folder, click the address bar at the top, copy (Ctrl+C) and paste it here (Ctrl+V).</div>
     <div class="row" style="margin-top:4px"><input type="text" id="localPath" placeholder="e.g. C:\Users\you\Desktop\Blue Crescent\Resident Name" style="flex:1"><button class="light small" onclick="useLocal()">Use this folder</button></div>
-    <div id="inboxBox" style="display:none; margin-top:10px"><label>Or pick one from your inbox folder</label><div id="inboxList" class="row"></div></div>
+    <div class="muted" style="margin-top:8px">Or just copy the folder into <code class="path" id="inboxPath"></code>: it starts by itself, and everything finished goes into a <b>Completed Audits</b> folder inside it.</div>
+    <div id="inboxBox" style="display:none; margin-top:6px"><label>Waiting in your inbox</label><div id="inboxList" class="row"></div></div>
     <div class="drop" id="drop" style="margin-top:12px">Or drag the folder or its files here</div>
     <div class="row" style="margin-top:6px">
       <button class="light small" onclick="folderPick.click()">Choose a folder…</button>
@@ -101,7 +102,12 @@
     <input type="file" id="filePick" multiple hidden>
     <input type="file" id="zipPick" accept=".zip" hidden>
     <div class="muted" id="picked" style="margin-top:6px; font-weight:600"></div>
-    <label class="inline"><input type="checkbox" id="several"> This folder holds several residents (one folder each)</label>
+    <label for="several">This folder is</label>
+    <select id="several" style="padding:6px; border:1px solid var(--line); border-radius:6px; font:inherit">
+      <option value="auto">Work it out (a property of residents, or one resident)</option>
+      <option value="one">One resident's file</option>
+      <option value="several">A property: one folder per resident</option>
+    </select>
     <label for="ma">Managing agent (as on licence)</label>
     <input type="text" id="ma" placeholder="Leave blank to take it from the licence">
     <div class="row">
@@ -150,11 +156,15 @@ async function refresh() {
     `<span class="${t.ocr?'on':'off'}">Scan reader ${t.ocr?'on':'off'}</span>` +
     `<span class="${t.office?'on':'off'}">Word converter ${t.office?'on':'off'}</span>`;
   $('tplPath').textContent = s.folders.template; $('refPath').textContent = s.folders.reference;
-  $('inboxBox').style.display = s.inbox.length ? '' : 'none';
-  $('inboxList').innerHTML = s.inbox.map(f => `<button class="light small" onclick="useInbox('${encodeURIComponent(f.name)}')">${esc(f.name)} (${f.files} files)</button>`).join('');
+  $('inboxPath').textContent = s.folders.inbox;
+  const waiting = s.inbox.filter(f => !f.picked);
+  $('inboxBox').style.display = waiting.length ? '' : 'none';
+  $('inboxList').innerHTML = waiting.map(f => `<button class="light small" onclick="useInbox('${encodeURIComponent(f.name)}')">${esc(f.name)} (${f.files} files)</button>`).join('');
   $('templateState').innerHTML = (s.template ? `<span class="ok">✓ Using</span> ${esc(s.template)}`
       : (s.template_others.length ? '<span class="bad">No Support Audit form found. Name the blank Form A Support_Audit_OG.docx.</span>' : '<span class="bad">Not added yet</span>'))
-    + (s.template_others.length ? `<br><span class="muted">Not used (other forms in that folder): ${s.template_others.map(esc).join(', ')}</span>` : '');
+    + (s.template_others.length ? `<br><span class="muted">Not used (other forms in that folder): ${s.template_others.map(esc).join(', ')}</span>` : '')
+    + (s.feedback_template ? `<br><span class="ok">✓ Overall Feedback Form:</span> ${esc(s.feedback_template)}`
+                           : '<br><span class="muted">Add the blank Overall Feedback Form here too, and it is written for each round.</span>');
   $('refList').innerHTML = s.reference.map(n => `<li><span>${esc(n)}</span><button class="light small" onclick="delRef('${encodeURIComponent(n)}')">Remove</button></li>`).join('') || '<li class="muted">Nothing yet</li>';
   $('refNote').innerHTML = (s.reference_held_back.length ? `<span class="bad">Not given to Claude (could not be hidden safely): ${s.reference_held_back.map(esc).join(', ')}</span>` : '')
     + (s.reference_leaks ? ' <span class="bad">Some names could not be hidden in the reference files; they are not used.</span>' : '');
@@ -231,7 +241,7 @@ async function start() {
     $('startBtn').disabled = true; $('startMsg').textContent = 'Copying the folder…';
     try {
       const r = await post('/api/batches/from-folder', {...local, ma:$('ma').value, date:$('date').value, notes:$('notes').value,
-        extra_names:$('extraNames').value, follow_up:$('followUp').checked, several:$('several').checked});
+        extra_names:$('extraNames').value, follow_up:$('followUp').checked, several:$('several').value});
       $('startMsg').textContent = 'Hiding names on this computer…';
       local = null; $('localPath').value=''; $('picked').textContent=''; $('notes').value=''; $('extraNames').value='';
       openRound(r.id);
@@ -242,7 +252,7 @@ async function start() {
   if (filesName) fd.append('folder_name', filesName);
   for (const p of picked) fd.append('files', p.file, p.path);
   for (const k of ['ma','date','notes']) fd.append(k, $(k).value);
-  fd.append('extra_names', $('extraNames').value); fd.append('follow_up', $('followUp').checked); fd.append('several', $('several').checked);
+  fd.append('extra_names', $('extraNames').value); fd.append('follow_up', $('followUp').checked); fd.append('several', $('several').value);
   $('startBtn').disabled = true; $('startMsg').textContent = 'Copying files…';
   try {
     const r = await api('/api/batches', {method:'POST', body:fd});
@@ -259,11 +269,12 @@ async function openRound(id) { if (selected !== id) { view = {path:null,page:1,p
 async function drawRound() {
   if (!selected) { $('detail').innerHTML=''; return }
   let b; try { b = await api('/api/batches/' + selected) } catch(e) { selected=null; $('detail').innerHTML=''; return }
-  const sig = JSON.stringify([b.status, b.report && b.report.counts, b.preview.length, Object.values(b.residents).map(r => [r.status, r.rating, r.has_final])]);
+  const sig = JSON.stringify([b.status, b.report && b.report.counts, b.preview.length, Object.values(b.residents).map(r => [r.status, r.rating, r.has_final, r.total]), b.feedback, b.scorebook_name, openLogs]);
   if (sig === lastDetail) { await pollLogs(b); return }
   lastDetail = sig;
   const rep = b.report;
-  let h = '';
+  let h = `<div class="box info">Finished forms are saved in <code class="path">${esc(b.out_dir)}</code>
+    <button class="light small" onclick="openOut('folder')">Open that folder</button></div>`;
   if (b.status === 'redacting') h += `<div class="box info">Hiding names and details on this computer. Nothing has been sent anywhere.</div>`;
   if (b.error) h += `<div class="box warn">${esc(b.error)}</div>`;
   if (rep) {
@@ -289,11 +300,11 @@ async function drawRound() {
   }
   if (b.status === 'check') h += `<div class="row" style="margin-top:14px"><button onclick="approve()">Looks right: send to Claude</button><span class="muted">Only the copies shown above are sent.</span></div>`;
   const rs = Object.entries(b.residents);
-  h += `<h3>Residents</h3><table class="res"><tr><th>Resident</th><th>Shown to Claude as</th><th>Status</th><th>Rating</th><th></th></tr>`;
+  h += `<h3>Residents</h3><table class="res"><tr><th>Resident</th><th>Shown to Claude as</th><th>Status</th><th>Band and score</th><th></th></tr>`;
   for (const [name, r] of rs) {
     const L = (r.label||'').replace(/[\[\]]/g,'');
     h += `<tr><td>${esc(name)}</td><td class="muted">${esc(r.label||'')}</td><td><span class="pill ${r.status}">${label(r.status)}</span></td>
-      <td><b class="${r.rating||''}">${r.rating||''}</b></td><td><div class="row">
+      <td><b class="${r.rating||''}">${r.rating||''}</b>${r.total!=null?` <span class="muted">${r.total}/100</span>`:''}</td><td><div class="row">
       ${r.has_final ? `<button class="small" onclick="openLocal('${L}',false)">Open in Word</button><button class="light small" onclick="openLocal('${L}',true)">Show in folder</button><a class="btn light small" href="/api/batches/${selected}/download/${L}">Download</a>` : ''}
       ${['running','queued'].includes(r.status) ? `<button class="light small" onclick="act('stop','${L}')">Stop</button>` : ''}
       ${['failed','stopped','done'].includes(r.status) ? `<button class="light small" onclick="act('retry','${L}')">Run again</button>` : ''}
@@ -301,7 +312,25 @@ async function drawRound() {
     if (r.result || r.restore) h += `<tr><td colspan="5">${r.result?`<div class="result">${esc(r.result)}</div>`:''}${r.restore?`<div class="muted" style="margin-top:4px">Put back on this computer: ${r.restore.text_swaps} names and details, ${r.restore.screenshots_restored} screenshots${r.restore.placeholders_left.length?` · <span class="bad">left as labels: ${r.restore.placeholders_left.map(esc).join(', ')}</span>`:''}</div>`:''}</td></tr>`;
     if (L) h += `<tr id="logrow-${L}" style="display:${openLogs[L]?'':'none'}"><td colspan="5"><pre class="log" id="log-${L}"></pre></td></tr>`;
   }
-  h += `</table><div class="row" style="margin-top:14px"><button class="danger" onclick="delRound()">Delete this round and its copies</button>
+  h += `</table>`;
+  if (b.scorebook_name) h += `<div class="row" style="margin-top:10px"><b>Scoring:</b> ${esc(b.scorebook_name)}
+     <button class="small" onclick="openOut('scores')">Open the scores</button>
+     <a class="btn light small" href="/api/batches/${selected}/download-round?what=scores">Download</a></div>`;
+  const fb = b.feedback || {};
+  h += `<h3>Overall Feedback Form</h3>`;
+  if (!b.feedback_template) h += `<div class="muted">Put the blank Overall Feedback Form in the template folder and it is written once the residents are done.</div>`;
+  else {
+    const st = fb.status || 'waiting';
+    const words = {waiting:'written when every resident is done', queued:'waiting', running:'Claude is writing it', done:'done', failed:'failed', stopped:'stopped', stopping:'stopping'};
+    h += `<div class="row"><span class="pill ${st}">${words[st]||st}</span>
+      ${fb.has_final ? `<button class="small" onclick="openOut('feedback')">Open in Word</button><a class="btn light small" href="/api/batches/${selected}/download-round?what=feedback">Download</a>` : ''}
+      ${['running','queued'].includes(st) ? `<button class="light small" onclick="fbAct('stop')">Stop</button>` : ''}
+      ${['failed','stopped','done'].includes(st) || (st==='waiting' && Object.values(b.residents).some(r => r.status==='done')) ? `<button class="light small" onclick="fbAct('run')">${st==='done'?'Write it again':'Write it now'}</button>` : ''}
+      <button class="light small" onclick="toggleLog('_round')">${openLogs['_round']?'Hide':'Show'} progress</button></div>`;
+    if (fb.result) h += `<div class="result" style="margin-top:6px">${esc(fb.result)}</div>`;
+    h += `<pre class="log" id="log-_round" style="display:${openLogs['_round']?'':'none'}"></pre>`;
+  }
+  h += `<div class="row" style="margin-top:14px"><button class="danger" onclick="delRound()">Delete this round and its copies</button>
     <span class="muted">Removes the copies, the hidden version and the key from this computer. Finished forms in your save folder stay.</span></div>`;
   $('detail').innerHTML = h;
   logState = {};
@@ -309,8 +338,9 @@ async function drawRound() {
   await pollLogs(b);
 }
 async function pollLogs(b) {
-  for (const [name, r] of Object.entries(b.residents)) {
-    const L = (r.label||'').replace(/[\[\]]/g,''); if (!L || !openLogs[L]) continue;
+  const labels = Object.values(b.residents).map(r => (r.label||'').replace(/[\[\]]/g,'')).concat(['_round']);
+  for (const L of labels) {
+    if (!L || !openLogs[L]) continue;
     const st = logState[L] || 0;
     const d = await api(`/api/batches/${selected}/log?label=${L}&offset=${st}`);
     if (d.lines.length) { const el = $('log-'+L); if (el) { el.textContent += d.lines.join('\n') + '\n'; el.scrollTop = 1e9 } }
@@ -338,6 +368,8 @@ async function redo(_) {
 }
 async function approve() { try { await post(`/api/batches/${selected}/approve`) } catch(e) { return alert(e.message) } lastDetail=''; drawRound(); refresh() }
 async function act(a, L) { try { await post(`/api/batches/${selected}/${a}/${L}`) } catch(e) { alert(e.message) } lastDetail=''; drawRound(); refresh() }
+async function openOut(what) { try { await post(`/api/batches/${selected}/open-round?what=${what}`) } catch(e) { alert(e.message) } }
+async function fbAct(a) { try { await post(`/api/batches/${selected}/feedback/${a}`) } catch(e) { return alert(e.message) } lastDetail=''; drawRound(); refresh() }
 async function openLocal(L, folder) { try { await post(`/api/batches/${selected}/open/${L}?folder=${folder}`) } catch(e) { alert(e.message) } }
 async function delRound() {
   if (!confirm('Delete this round from this computer? The copies, the hidden version and the key are removed. Finished forms in your save folder stay.')) return;

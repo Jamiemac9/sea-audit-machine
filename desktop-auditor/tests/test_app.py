@@ -52,17 +52,14 @@ def main():
         wait(lambda: _up(), 30)
         form = tmp / "Support_Audit_OG.docx"; make_form(form)
         call("/api/template", files=[("file", ("Support_Audit_OG.docx", form.read_bytes()))], data={})
+        make_form(home / "template" / "Overall Feedback Form OG.docx")   # dropped straight in
         # a completed audit as reference, naming a past resident
         ref = tmp / "Completed Audit.docx"; d = Document(); d.add_paragraph("Support Audit for Grace Oldfield. Rating: Green."); d.save(ref)
         call("/api/reference", files=[("files", ("Completed Audit.docx", ref.read_bytes()))], data={})
-        dirs = build(tmp / "Example Property")
-        files = []
-        for name, folder in dirs.items():
-            for p in folder.rglob("*"):
-                if p.is_file():
-                    files.append(("files", (f"Example Property/{name}/{p.relative_to(folder).as_posix()}", p.read_bytes())))
-        bid = call("/api/batches", files=files, data={"ma": "Example Agent Ltd", "several": "true",
-                                                      "notes": "Sam Sample moved rooms in August"})["id"]
+        prop = tmp / "Desktop" / "Example Property"
+        dirs = build(prop)
+        bid = call("/api/batches/from-folder", {"path": str(prop), "ma": "Example Agent Ltd", "several": "auto",
+                                                "notes": "Sam Sample moved rooms in August"})["id"]
         b = wait(lambda: (lambda b: b if b["status"] in ("check", "blocked", "failed") else None)(call(f"/api/batches/{bid}")))
         assert b["status"] == "check", b
         print("Ready to check:", b["report"]["counts"], "held back:", b["report"]["held_back"])
@@ -77,11 +74,36 @@ def main():
             assert r["status"] == "done", r
         r = b["residents"]["Sam Sample"]
         assert "Jordan Patel" in r["result"] and "Tina Test" in r["result"] and "[" not in r["result"], r["result"]
-        final = out_dir / "Example Agent Ltd" / "Support Audit - Sam Sample.docx"
+        completed = prop / "Completed Audits"
+        final = completed / "Support Audit - Sam Sample.docx"
         text = "\n".join(c.text for t in Document(str(final)).tables for row in t.rows for c in row.cells)
         assert "Sam Sample" in text and "Jordan Patel supported Sam Sample" in text, text
         assert r["restore"]["screenshots_restored"] == 1, r["restore"]
         print("Finished form:", final, "\nResult shown:", r["result"])
+        assert r["rating"] == "Green" and r["total"] == 63.3, (r["rating"], r["total"])
+        # scoring workbook: the framework's tabs plus one breakdown tab per resident
+        from openpyxl import load_workbook
+        wb = load_workbook(completed / "Audit Scores - Example Agent Ltd.xlsx")
+        print("Workbook tabs:", wb.sheetnames)
+        assert wb.sheetnames[:3] == ["Audits", "Weights", "MA Summary"] and "Sam Sample" in wb.sheetnames
+        assert wb["Audits"]["A2"].value in ("Sam Sample", "Tina Test") and wb["Audits"]["E2"].value.startswith("=IF(")
+        assert "Jordan Patel" in str(wb["Sam Sample"]["E12"].value), wb["Sam Sample"]["E12"].value
+        # the overall feedback form, after both residents
+        b = wait(lambda: (lambda b: b if b["feedback"]["status"] in ("done", "failed") else None)(call(f"/api/batches/{bid}")), 120)
+        print("Feedback:", b["feedback"]["status"], call(f"/api/batches/{bid}/log?label=_round")["lines"][-2:])
+        assert b["feedback"]["status"] == "done", b["feedback"]
+        off = completed / "Overall Feedback Form - Example Agent Ltd.docx"
+        text = "\n".join(c.text for t in Document(str(off)).tables for row in t.rows for c in row.cells)
+        assert "Sam Sample" in text and "Tina Test" in text and "Jordan Patel" in text and "[" not in text, text
+        assert b["feedback"]["restore"]["screenshots_restored"] == 1
+        print("Overall Feedback Form:", off)
+        # nothing written into the original folder but Completed Audits
+        assert sorted(p.name for p in prop.iterdir()) == ["Completed Audits", "Sam Sample", "Tina Test"]
+        # inbox: drop a folder in and it starts by itself
+        import shutil as _sh
+        _sh.copytree(dirs["Tina Test"], home / "inbox" / "Tina Test")
+        nb = wait(lambda: next((x for x in call("/api/state")["batches"] if x["id"] != bid), None), 60)
+        print("Inbox picked up:", nb["residents"][0]["name"], nb["status"])
         call(f"/api/batches/{bid}", method="DELETE")
         assert not (home / "batches" / bid).exists() and final.exists()
         print("All app checks passed.")

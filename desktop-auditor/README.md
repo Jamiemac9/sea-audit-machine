@@ -67,6 +67,18 @@ finder, Scan reader, Word converter.
 On Windows, double-click `Support Audit (Windows).bat` instead (install Git for Windows
 before Claude Code).
 
+## What you get for each round
+
+Everything goes into a **Completed Audits** folder inside the folder you gave it (or, for
+uploads, your "Save finished forms in" folder):
+
+- `Support Audit - <Name>.docx` for every resident
+- `Audit Scores - <Managing agent>.xlsx`: the Audit Scoring Framework, with the Audits,
+  Weights and MA Summary tabs, plus a breakdown tab for each resident (each criterion's
+  score, what that score means, and why it was given)
+- `Overall Feedback Form - <Managing agent>.docx`, written once every resident is done
+  (put the blank Overall Feedback Form in the template folder for this)
+
 ## Each audit
 
 1. **Once:** upload the blank `Support_Audit_OG.docx`, your reference files (house style,

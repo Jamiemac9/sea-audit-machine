@@ -51,6 +51,15 @@ def template_files() -> list[Path]:
     return sorted(p for p in TEMPLATE_DIR.glob("*.docx") if not p.name.startswith("~$"))
 
 
+def feedback_template_path() -> Path | None:
+    """The blank Overall Feedback Form, from the same template folder."""
+    for p in template_files():
+        k = re.sub(r"[^a-z]", "", p.stem.lower())
+        if "overallfeedback" in k or k.startswith("feedback"):
+            return p
+    return None
+
+
 def template_path() -> Path | None:
     """The blank Form A. If other forms sit in the folder too, the one named like
     Support Audit wins (e.g. Support_Audit_OG.docx over Overall Feedback Form OG.docx)."""
@@ -105,7 +114,7 @@ def read_log(bid: str, label: str) -> list[str]:
 
 
 def new_batch(resident_dirs: list[Path], ma: str, date: str, follow_up: bool, notes: str,
-              extra_names: list[str]) -> dict:
+              extra_names: list[str], source: str | None = None) -> dict:
     """resident_dirs are folders already copied into a staging area; they are moved in."""
     bid = uuid.uuid4().hex[:12]
     d = BATCHES / bid
@@ -118,7 +127,8 @@ def new_batch(resident_dirs: list[Path], ma: str, date: str, follow_up: bool, no
         residents[r.name] = {"name": r.name, "status": "waiting"}
     b = {"id": bid, "created": dt.datetime.now().isoformat(timespec="seconds"), "status": "redacting",
          "ma": ma, "date": date or dt.date.today().strftime("%d/%m/%y"), "follow_up": follow_up,
-         "notes": notes, "extra_names": extra_names, "residents": residents, "report": None}
+         "notes": notes, "extra_names": extra_names, "residents": residents, "report": None,
+         "source": source, "feedback": {"status": "waiting"}}
     save(b)
     return b
 
@@ -210,7 +220,7 @@ def run_resident(bid: str, name: str, on_run=None) -> dict:
         "output": str(redacted_out), "ma": b["ma"], "date": b["date"], "follow_up": b["follow_up"],
         "notes": reid_free(b["notes"], d), "skill_override": str(skill) if skill.exists() else "",
         "private_dirs": [str(d / "private"), str(REFERENCE), str(HOME / "private_reference"),
-                         settings()["output_dir"]],
+                         settings()["output_dir"], str(out_dir(b))],
     }
     r["status"] = "running"
     r["started"] = dt.datetime.now().isoformat(timespec="seconds")
@@ -234,14 +244,7 @@ def run_resident(bid: str, name: str, on_run=None) -> dict:
         save(b)
         return r
     # ---- redaction out: on this computer only ----
-    out_dir = Path(settings()["output_dir"]).expanduser()
-    if b.get("ma"):
-        out_dir = out_dir / safe_name(b["ma"])
-    final = out_dir / f"Support Audit - {name}.docx"
-    n = 2
-    while final.exists():
-        final = out_dir / f"Support Audit - {name} ({n}).docx"
-        n += 1
+    final = _unique(out_dir(b) / f"Support Audit - {name}.docx")
     try:
         info = reidentify(redacted_out, final, d / "private", work, d / "claude" / "round")
     except Exception as e:
@@ -254,6 +257,14 @@ def run_resident(bid: str, name: str, on_run=None) -> dict:
     r["result"] = reid_text(run.result_text, display)
     m = re.search(r"Rating:\W*(Gold|Green|Amber|Red)", r["result"] or "", re.I)
     r["rating"] = m.group(1).title() if m else None
+    scored = work / "score-result.json"
+    if scored.exists():
+        try:
+            r["score"] = _reid_obj(json.loads(scored.read_text(encoding="utf-8")), display)
+            r["rating"] = r["score"]["result"]["final_band"]
+            r["total"] = r["score"]["result"]["total"]
+        except Exception as e:
+            log(bid, label, f"! Could not read the score: {e}")
     r["final"] = str(final)
     r["restore"] = info
     r["status"] = "done"
@@ -263,7 +274,136 @@ def run_resident(bid: str, name: str, on_run=None) -> dict:
     if info["placeholders_left"]:
         log(bid, label, f"! Placeholders still in the form (check by hand): {', '.join(info['placeholders_left'])}")
     save(b)
+    if r.get("score"):
+        try:
+            p = build_scorebook(bid)
+            log(bid, label, f"Scoring workbook updated: {p}")
+        except Exception as e:
+            log(bid, label, f"! Scoring workbook could not be written: {type(e).__name__}: {e}")
     return r
+
+
+def out_dir(b: dict) -> Path:
+    """Where the finished forms go: a 'Completed Audits' folder inside the folder that was
+    dropped in, or, for uploads, the save folder in settings under the managing agent."""
+    if b.get("source") and Path(b["source"]).is_dir():
+        return Path(b["source"]) / "Completed Audits"
+    base = Path(settings()["output_dir"]).expanduser()
+    return base / safe_name(b["ma"]) if b.get("ma") else base
+
+
+def _unique(p: Path, overwrite: bool = False) -> Path:
+    if overwrite or not p.exists():
+        return p
+    n = 2
+    while True:
+        q = p.with_name(f"{p.stem} ({n}){p.suffix}")
+        if not q.exists():
+            return q
+        n += 1
+
+
+def _reid_obj(obj, display):
+    if isinstance(obj, str):
+        return reid_text(obj, display)
+    if isinstance(obj, list):
+        return [_reid_obj(x, display) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _reid_obj(v, display) for k, v in obj.items()}
+    return obj
+
+
+def build_scorebook(bid: str) -> Path | None:
+    """Rebuild the round's scoring workbook from every resident scored so far."""
+    import scorebook
+    b = load(bid)
+    done = [(n, r) for n, r in b["residents"].items() if r.get("score")]
+    if not done:
+        return None
+    tabs = scorebook.tab_names([n for n, _ in done])
+    rows = [{"name": n, "score": r["score"], "tab": t} for (n, r), t in zip(done, tabs)]
+    path = out_dir(b) / f"Audit Scores - {safe_name(b['ma'] or 'Round')}.xlsx"
+    try:
+        scorebook.build(path, b["ma"], b["date"], rows)
+    except PermissionError:  # open in Excel: save beside it instead
+        path = _unique(path.with_name(path.stem + " (updated).xlsx"), overwrite=True)
+        scorebook.build(path, b["ma"], b["date"], rows)
+    b = load(bid)
+    b["scorebook"] = str(path)
+    save(b)
+    return path
+
+
+def round_ready_for_feedback(b: dict) -> bool:
+    rs = b["residents"].values()
+    return (feedback_template_path() is not None and any(r["status"] == "done" for r in rs)
+            and not any(r["status"] in ("queued", "running", "stopping") for r in rs)
+            and b.get("feedback", {}).get("status") in (None, "waiting"))
+
+
+def run_feedback(bid: str, on_run=None) -> dict:
+    """Claude writes the Overall Feedback Form from the redacted round and the finished
+    (redacted) Form As and scores; then the real details go back in, on this computer."""
+    b = load(bid)
+    d = bdir(bid)
+    fb = b.setdefault("feedback", {})
+    t = feedback_template_path()
+    if not t:
+        fb.update(status="failed", error="No Overall Feedback Form in the template folder")
+        save(b)
+        return fb
+    work = d / "claude" / "work" / "_round"
+    if work.exists():
+        shutil.rmtree(work)
+    work.mkdir(parents=True)
+    redacted_out = work / "Overall Feedback Form.docx"
+    labels = ", ".join(r["label"] for r in b["residents"].values() if r["status"] == "done")
+    job = {
+        "instructions": "FEEDBACK.md", "label": "round", "round": str(d / "claude" / "round"),
+        "audits": str(d / "claude" / "work"), "template": str(t), "reference": str(REFERENCE_RED),
+        "work": str(work), "output": str(redacted_out), "ma": b["ma"], "date": b["date"],
+        "follow_up": b["follow_up"], "notes": reid_free(b["notes"], d),
+        "extra_dirs": [str(d / "claude" / "work")],
+        "prompt": (f"Write the Overall Feedback Form for this round ({labels}) from the blank form at {t}, "
+                   f"following CLAUDE.md. Save it as {redacted_out}."),
+        "private_dirs": [str(d / "private"), str(REFERENCE), str(HOME / "private_reference"),
+                         settings()["output_dir"], str(out_dir(b))],
+    }
+    fb.update(status="running", started=dt.datetime.now().isoformat(timespec="seconds"))
+    save(b)
+    run = runner.Run(job, settings(), lambda line: log(bid, "_round", line))
+    if on_run:
+        on_run(run)
+    try:
+        ok = run.start()
+    except Exception as e:
+        log(bid, "_round", f"! {type(e).__name__}: {e}")
+        ok = False
+    b = load(bid)
+    fb = b["feedback"]
+    if fb.get("status") == "stopping":
+        fb["status"] = "stopped"
+        save(b)
+        return fb
+    if not ok:
+        fb["status"] = "failed"
+        save(b)
+        return fb
+    final = _unique(out_dir(b) / f"Overall Feedback Form - {safe_name(b['ma'] or 'Round')}.docx")
+    try:
+        # screenshots may come from the round's own crops or be reused from a resident's audit
+        info = reidentify(redacted_out, final, d / "private", d / "claude" / "work", d / "claude" / "round")
+    except Exception as e:
+        log(bid, "_round", f"! Putting the real details back failed: {type(e).__name__}: {e}")
+        fb["status"] = "failed"
+        save(b)
+        return fb
+    display = json.loads((d / "private" / "key.json").read_text(encoding="utf-8"))["display"]
+    fb.update(status="done", final=str(final), restore=info, result=reid_text(run.result_text, display),
+              finished=dt.datetime.now().isoformat(timespec="seconds"))
+    log(bid, "_round", f"Real details put back on this computer. Saved: {final}")
+    save(b)
+    return fb
 
 
 def reid_free(notes: str, d: Path) -> str:
