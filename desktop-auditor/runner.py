@@ -139,6 +139,7 @@ class Run:
         self.ok = False
         self.error = ""          # plain reason when the run ends without a form
         self.last_output = time.time()
+        self.plain = []          # lines that were not Claude's messages (errors, tracebacks)
 
     def command(self, claude: str, runtime: Path) -> list[str]:
         job = self.job
@@ -172,7 +173,7 @@ class Run:
         self.proc = subprocess.Popen(self.command(claude, runtime), cwd=runtime, env=env,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                      text=True, encoding="utf-8", errors="replace", bufsize=1, **NO_WINDOW)
-        idle = float(self.settings.get("idle_minutes") or 30) * 60
+        idle = float(self.settings.get("idle_minutes") or 45) * 60
         threading.Thread(target=self._watch, args=(idle,), daemon=True).start()
         for raw in self.proc.stdout:
             self.last_output = time.time()
@@ -186,8 +187,9 @@ class Run:
             return True
         if not self.error:
             said = re.sub(r"\s+", " ", self.result_text).strip()
+            tail = " | ".join(self.plain)[-400:]
             self.error = ("Claude finished but did not save the form. It said: " + said[:600]) if said else \
-                f"Claude stopped (exit {self.proc.returncode}) without saving the form."
+                f"Claude stopped (exit {self.proc.returncode}) without saving the form." + (f" Last message: {tail}" if tail else "")
         self.on_line("! " + self.error)
         self.on_line(f"! Full run log: {self.job['work']}\\run-log.jsonl")
         return False
@@ -214,6 +216,7 @@ class Run:
             msg = json.loads(raw)
         except json.JSONDecodeError:
             self.on_line(raw)
+            self.plain = (self.plain + [raw])[-3:]
             if "login" in raw.lower() or "auth" in raw.lower():
                 self.on_line("! Open Terminal / Command Prompt, type  claude  and log in once, then try again.")
             return

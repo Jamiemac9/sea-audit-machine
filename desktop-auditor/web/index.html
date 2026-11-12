@@ -49,6 +49,22 @@
   .bad { color:var(--red); font-weight:700; }
   .why { margin-top:10px; padding:10px 12px; border-left:3px solid var(--red); background:var(--red-bg); border-radius:4px; color:#6E1F13; font-size:14px; white-space:pre-wrap; }
   .why b { display:block; margin-bottom:2px; }
+  .note { margin-top:10px; padding:10px 12px; border-left:3px solid var(--amber); background:var(--amber-bg); border-radius:4px; color:#6B3A08; font-size:14px; }
+  .bigdrop { display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:6px;
+    min-height:230px; border:2px dashed #9FB3CC; border-radius:14px; background:var(--card); padding:28px; cursor:pointer; transition:background .15s, border-color .15s; }
+  .bigdrop b { font-size:22px; } .bigdrop.over { background:#EAF1FA; border-color:var(--act); }
+  .bigdrop.busy { cursor:progress; opacity:.75; }
+  .forms { display:flex; gap:10px; flex-wrap:wrap; margin:12px 0 26px; }
+  .form-slot { display:flex; align-items:center; gap:10px; padding:10px 14px; border:1px solid #DCE3EA; border-radius:10px; background:var(--card); }
+  .form-slot.missing { border-color:var(--amber); background:var(--amber-bg); }
+  .form-slot .tick { width:22px; height:22px; border-radius:50%; display:grid; place-items:center; font-size:13px; font-weight:700; color:#fff; background:var(--green); }
+  .form-slot.missing .tick { background:var(--amber); }
+  .rlist { list-style:none; padding:0; margin:0; }
+  .btn { white-space:nowrap; }
+  #needsBox .needs { margin-bottom:18px; }
+  .rlist li { display:grid; grid-template-columns: minmax(180px,1.2fr) 2fr auto; gap:18px; align-items:center; padding:14px 0; border-top:1px solid #E5EAEF; }
+  .rlist li:first-child { border-top:0; }
+  .rlist a.name { font-weight:700; color:inherit; text-decoration:none; } .rlist a.name:hover { text-decoration:underline; }
   .live { margin-top:6px; font-size:13px; color:#5b6b75; }
   .live.slow { color:#8F4E0E; }
   .ok { color:var(--green); font-weight:700; }
@@ -182,9 +198,8 @@
   <aside class="rail">
     <div class="brand">Support Audit<small>Form A, scores and feedback</small></div>
     <nav class="nav">
-      <a href="#/" data-r="home"><span>Dashboard</span><span class="count hidden" id="navNeeds"></span></a>
-      <a href="#/new" data-r="new"><span>New audit</span></a>
-      <a href="#/setup" data-r="setup"><span>Setup</span><span class="count hidden" id="navSetup"></span></a>
+      <a href="#/" data-r="home"><span>Audits</span><span class="count hidden" id="navNeeds"></span></a>
+      <a href="#/setup" data-r="setup"><span>Forms and settings</span><span class="count hidden" id="navSetup"></span></a>
     </nav>
     <div class="health" id="health"></div>
   </aside>
@@ -193,9 +208,8 @@
 <div class="toast" id="toast" role="status"></div>
 
 <input type="file" id="folderPick" webkitdirectory multiple hidden>
-<input type="file" id="filePick" multiple hidden>
-<input type="file" id="zipPick" accept=".zip" hidden>
 <input type="file" id="templateFile" accept=".docx" hidden>
+<input type="file" id="feedbackFile" accept=".docx" hidden>
 <input type="file" id="refFiles" multiple hidden>
 
 <script>
@@ -264,20 +278,19 @@ const scoreBar = r => r.total != null ? `<div class="score"><div class="bar"><i 
 function needs(s) {
   const out = [];
   if (s.login.loggedIn === false) out.push({t:'Log Claude in on this computer', a:`<button class="btn small" onclick="claudeLogin()">Log in to Claude</button>`});
-  if (!s.template) out.push({t:'Add the blank Support Audit form', a:`<a class="btn quiet small" href="#/setup">Open setup</a>`});
+  if (!s.template) out.push({t:'Add the blank Support Audit form (once)', a:`<button class="btn quiet small" onclick="templateFile.click()">Add it</button>`});
   for (const b of s.batches) {
-    const name = b.ma || 'Audit round';
-    if (b.status === 'check') out.push({t:`Check what Claude will see: ${esc(name)}, ${b.residents.length} ${b.residents.length===1?'resident':'residents'}`, a:`<a class="btn mark small" href="#/round/${b.id}">Check now</a>`});
-    if (b.status === 'blocked') out.push({t:`Some details could not be hidden in ${esc(name)}`, a:`<a class="btn quiet small" href="#/round/${b.id}">Fix</a>`});
+    const name = b.ma || b.folder_name || 'Audit round';
+    if (b.status === 'check') out.push({t:`You asked to check before sending: ${esc(name)}`, a:`<a class="btn mark small" href="#/round/${b.id}">Check now</a>`});
+    if (b.status === 'blocked') out.push({t:`A detail could not be hidden in a folder name in ${esc(name)}`, a:`<a class="btn quiet small" href="#/round/${b.id}">Fix</a>`});
     const short = t => t ? `<br><span class="muted">${esc(t.length > 140 ? t.slice(0, 140) + '...' : t)}</span>` : '';
-    for (const r of b.residents) if (['failed','empty'].includes(r.status)) out.push({t:`${esc(r.name)}: ${r.status==='empty' ? 'nothing to audit' : 'the audit did not finish'}${short(r.error)}`, a:`<a class="btn quiet small" href="#/round/${b.id}">See why</a>`});
-    if (b.feedback === 'failed') out.push({t:`The Overall Feedback Form for ${esc(name)} did not finish${short(b.feedback_error)}`, a:`<a class="btn quiet small" href="#/round/${b.id}">See why</a>`});
+    for (const r of b.residents) if (r.status === 'failed') out.push({t:`${esc(r.name)}: did not finish after three tries${short(r.error)}`, a:`<a class="btn quiet small" href="#/round/${b.id}">See why</a>`});
+    if (b.feedback === 'failed') out.push({t:`Overall Feedback Form for ${esc(name)} did not finish${short(b.feedback_error)}`, a:`<a class="btn quiet small" href="#/round/${b.id}">See why</a>`});
     if (b.status === 'failed') out.push({t:`${esc(name)} could not be prepared${short(b.error)}`, a:`<a class="btn quiet small" href="#/round/${b.id}">See why</a>`});
   }
   return out;
 }
-const setupMissing = s => [s.login.loggedIn === false, !s.template, !s.feedback_template, !s.reference.length].filter(Boolean).length;
-
+const setupMissing = s => [s.login.loggedIn !== false, !!s.template, !!s.feedback_template].filter(x => !x).length;
 function renderRail() {
   const s = S, t = s.tools, li = s.login.loggedIn;
   put('health', `
@@ -292,109 +305,51 @@ function renderRail() {
   document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('on', a.dataset.r === (route.name === 'round' ? 'home' : route.name)));
 }
 
-// ---------- dashboard ----------
+// ---------- the one screen: drop, it runs, it saves ----------
+function roundLine(b) {
+  const rs = b.residents, live = rs.filter(r => r.status !== 'empty');
+  const d = live.filter(r => r.status === 'done').length;
+  const busy = rs.some(r => ['waiting','queued','running','stopping'].includes(r.status)) || ['queued','running'].includes(b.feedback) || b.status === 'redacting';
+  const steps = live.reduce((a, r) => a + stopOf(b.status, r).i + (r.status === 'done' ? 1 : 0), 0);
+  const pct = !busy && b.status !== 'check' ? 100 : live.length ? Math.round(steps / (live.length * 5) * 100) : 0;
+  const retrying = rs.some(r => r.note) || b.feedback_note;
+  const word = b.status === 'redacting' ? 'Hiding names on this computer'
+    : b.status === 'check' ? 'Waiting for your check'
+    : busy ? (retrying ? `${d} of ${live.length} done. Trying again on one that stopped` : `${d} of ${live.length} done. Working`)
+    : `${d} of ${live.length} delivered${b.feedback === 'done' ? ', with the feedback form' : ''}`;
+  return `<li><div><a class="name" href="#/round/${b.id}">${esc(b.ma || b.folder_name || 'Audit round')}</a><div class="muted">${when(b.created)}</div></div>
+    <div><div class="row" style="justify-content:space-between"><span>${word}</span><span class="muted">${pct}%</span></div><div class="progress"><i style="width:${pct}%"></i></div></div>
+    <div class="row">${b.has_report ? `<button class="btn small" onclick="openRound('${b.id}','report')">Report</button>` : ''}<button class="btn quiet small" onclick="openRound('${b.id}','folder')">Folder</button></div></li>`;
+}
+function formSlots(s) {
+  const slot = (ok, name, kind) => `<div class="form-slot ${ok ? '' : 'missing'}"><span class="tick">${ok ? '✓' : '!'}</span>
+    <div><b>${name}</b><div class="muted">${ok ? 'Stored. Used for every audit.' : 'Not added yet. Add it once.'}</div></div>
+    <button class="btn ${ok ? 'quiet' : 'mark'} small" onclick="${kind}.click()">${ok ? 'Replace' : 'Add'}</button></div>`;
+  return slot(!!s.template, 'Support Audit form', 'templateFile') + slot(!!s.feedback_template, 'Overall Feedback Form', 'feedbackFile');
+}
 function renderHome() {
   const s = S;
-  const all = s.batches.flatMap(b => b.residents.map(r => ({...r, b})));
-  const done = all.filter(r => r.status === 'done');
-  const scored = done.filter(r => r.total != null);
-  const avg = scored.length ? (scored.reduce((a, r) => a + r.total, 0) / scored.length).toFixed(1) : 'None yet';
-  const active = all.filter(r => ['waiting','check','queued','running','stopping'].includes(r.status)).length;
-  const bands = ['Gold','Green','Amber','Red'].map(k => [k, done.filter(r => r.rating === k).length]);
-  const nd = needs(s);
-  const needsHtml = nd.length
-    ? `<div class="needs"><h2><span>Needs you</span></h2><ul>${nd.map(x => `<li><span>${x.t}</span>${x.a}</li>`).join('')}</ul></div>`
-    : `<div class="needs clear"><h2>Nothing needs you right now</h2><div class="muted">Rounds show up here when they are ready for your check.</div></div>`;
-  const rounds = s.batches.length ? s.batches.map(b => {
-      const rs = b.residents, d = rs.filter(r => r.status === 'done').length;
-      const steps = rs.reduce((a, r) => a + stopOf(b.status, r).i + (r.status === 'done' ? 1 : 0), 0);
-      const pct = rs.length ? Math.round(steps / (rs.length * 5) * 100) : 0;
-      const lead = b.status === 'redacting' ? 'Hiding names on this computer' : b.status === 'check' ? 'Ready for your check'
-        : b.status === 'blocked' ? 'Some details could not be hidden'
-        : d === rs.length ? (b.feedback === 'done' ? 'Complete' : b.feedback === 'running' ? 'Writing the Overall Feedback Form' : 'Every resident done')
-        : `${d} of ${rs.length} residents done`;
-      return `<a class="round" href="#/round/${b.id}">
-        <div><div class="title">${esc(b.ma || 'Audit round')}</div><div class="muted">Started ${when(b.created)}</div></div>
-        <div><div class="row" style="justify-content:space-between"><span>${lead}</span><span class="muted">${pct}%</span></div><div class="progress"><i style="width:${pct}%"></i></div></div>
-        <div class="dots" title="One square per resident">${rs.map(r => { const k = stopOf(b.status, r).kind;
-          return `<i class="${r.rating ? 'c-'+r.rating : k==='you' ? 'you' : k==='err' ? 'err' : k==='now' ? 'now' : ''}" title="${esc(r.name)}"></i>` }).join('')}</div>
-      </a>`}).join('')
-    : `<div class="empty"><h3>No audits yet</h3><p>Start one from a resident's folder or a whole property.</p><a class="btn" href="#/new">Start an audit</a></div>`;
-  put('main', `
-    <h1>Dashboard</h1>
-    <p class="lede">Where every round and resident is, and what is waiting for you.</p>
-    ${needsHtml}
-    <div class="stats">
-      <div class="stat"><b>${active}</b><span>residents in progress</span></div>
-      <div class="stat"><b>${done.length}</b><span>residents audited</span></div>
-      <div class="stat"><b>${avg}</b><span>average score out of 100</span></div>
-      <div class="stat"><span>Bands so far</span>
-        <div class="bandbar">${done.length ? bands.map(([k, n]) => `<i class="c-${k}" style="width:${n/done.length*100}%"></i>`).join('') : ''}</div>
-        <div class="legend">${bands.map(([k, n]) => `<span style="--c:var(--${k.toLowerCase()})">${k} ${n}</span>`).join('')}</div></div>
-    </div>
-    <div class="row" style="justify-content:space-between; margin-bottom:12px"><h2 style="margin:0">Rounds</h2><a class="btn" href="#/new">Start an audit</a></div>
-    ${rounds}`);
-}
-
-// ---------- new audit ----------
-function renderNew() {
-  if (!$('newView')) {
-    $('main').innerHTML = `<div id="newView">
-      <h1>Start an audit</h1>
-      <p class="lede">Give it a resident's folder, or a property folder with one folder per resident. Names are hidden on this computer before anything goes to Claude, and everything finished goes into a Completed Audits folder inside the folder you gave it.</p>
-      <div class="split">
-        <div class="panel">
-          <h2>Which files</h2>
-          <label class="field" for="localPath">Paste the folder's location</label>
-          <div class="muted" style="margin-bottom:6px">In File Explorer, open the folder, click the address bar, copy it and paste it here.</div>
-          <div class="row"><input type="text" id="localPath" placeholder="C:\\Users\\you\\Desktop\\Property name" style="flex:1"><button class="btn quiet" onclick="useLocal()">Use this folder</button></div>
-          <div class="or">or</div>
-          <div class="drop" id="drop"><b>Drag the folder or its files here</b><span class="muted">or choose them</span>
-            <div class="row" style="justify-content:center; margin-top:12px">
-              <button class="btn quiet small" onclick="folderPick.click()">Choose a folder</button>
-              <button class="btn quiet small" onclick="filePick.click()">Choose files</button>
-              <button class="btn quiet small" onclick="zipPick.click()">Choose a .zip</button></div>
-            <div class="muted" style="margin-top:8px">With "Choose a folder", go into the folder and press Upload. The files don't show in that window, which is normal.</div>
-          </div>
-          <div class="chosen" id="chosen"></div>
-          <div class="or">or</div>
-          <div>Copy the folder into <code class="path" id="inboxPath"></code> and it starts by itself.</div>
-          <div id="inboxBox"></div>
-        </div>
-        <div class="panel">
-          <h2>About this audit</h2>
-          <label class="field" for="ma">Managing agent, as on the licence</label>
-          <input type="text" id="ma" placeholder="Leave blank to take it from the licence">
-          <div class="row" style="align-items:end">
-            <div style="flex:1"><label class="field" for="date">Audit date</label><input type="text" id="date"></div>
-            <label class="check" style="flex:1; margin-bottom:9px"><input type="checkbox" id="followUp"> Follow-up audit</label>
-          </div>
-          <label class="field" for="several">This folder is</label>
-          <select id="several">
-            <option value="auto">Worked out for me</option>
-            <option value="one">One resident's file</option>
-            <option value="several">A property, one folder per resident</option>
-          </select>
-          <label class="field" for="extraNames">Other names to hide in these files</label>
-          <textarea id="extraNames" placeholder="One per line, for example family members or the support worker"></textarea>
-          <label class="field" for="notes">Notes for this audit</label>
-          <textarea id="notes" placeholder="Anything Claude should know. Names in here are hidden too."></textarea>
-          <div class="row" style="margin-top:18px"><button class="btn" id="startBtn" onclick="start()" disabled>Start the audit</button><span class="muted" id="startMsg"></span></div>
-        </div>
-      </div></div>`;
-    $('date').value = new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'2-digit', year:'2-digit'});
-    wireDrop(); showChosen();
+  if (!$('homeView')) {
+    $('main').innerHTML = `<div id="homeView">
+      <h1>Audits</h1>
+      <p class="lede">Drop a resident's folder or a whole property folder (zips are fine). Names are hidden on this computer, Claude fills in the forms, the real names go back in, and everything is saved for you.</p>
+      <div class="bigdrop" id="drop" tabindex="0" onclick="folderPick.click()" onkeydown="if(event.key==='Enter')folderPick.click()">
+        <b id="dropTitle">Drop a folder here</b><span class="muted" id="dropSub">or click to choose one</span></div>
+      <details style="margin-top:10px"><summary class="muted" style="cursor:pointer">Optional details for the next folder you drop</summary>
+        <div class="panel" style="margin-top:8px"><div class="row" style="gap:16px; align-items:end; flex-wrap:wrap">
+          <div style="flex:2; min-width:220px"><label class="field" for="ma">Managing agent</label><input type="text" id="ma" placeholder="Taken from the licence if blank"></div>
+          <label class="check" style="margin-bottom:9px"><input type="checkbox" id="followUp"> Follow-up audit</label></div>
+          <label class="field" for="notes">Notes for Claude</label><textarea id="notes" placeholder="Anything it should know. Names in here are hidden too."></textarea></div></details>
+      <div class="forms" id="forms"></div>
+      <div id="needsBox"></div>
+      <div class="panel"><h2>Rounds</h2><ul class="rlist" id="rounds"></ul></div></div>`;
+    for (const k of ['forms','needsBox','rounds']) delete cache[k];
+    wireDrop();
   }
-  $('inboxPath').textContent = S.folders.inbox;
-  const waiting = S.inbox.filter(f => !f.picked);
-  put('inboxBox', waiting.length ? `<div class="muted" style="margin-top:8px">Waiting there now:</div><div class="row" style="margin-top:6px">${waiting.map(f =>
-    `<button class="btn quiet small" onclick="useInbox('${encodeURIComponent(f.name)}')">${esc(f.name)} (${f.files} files)</button>`).join('')}</div>` : '');
-}
-function showChosen() {
-  const el = $('chosen'); if (!el) return;
-  el.style.display = src.label ? 'block' : 'none';
-  el.textContent = src.label ? `Ready: ${src.label}` : '';
-  $('startBtn').disabled = !(src.files.length || src.local);
+  put('forms', formSlots(s));
+  const nd = needs(s).filter(x => !/blank Support Audit/.test(x.t));
+  put('needsBox', nd.length ? `<div class="needs"><h2><span>Needs you</span></h2><ul>${nd.map(x => `<li><span>${x.t}</span>${x.a}</li>`).join('')}</ul></div>` : '');
+  put('rounds', s.batches.length ? s.batches.map(roundLine).join('') : `<li class="muted" style="display:block">Nothing yet. Drop a folder above.</li>`);
 }
 function wireDrop() {
   const d = $('drop');
@@ -410,48 +365,33 @@ function wireDrop() {
         more() }
     });
     for (const it of e.dataTransfer.items) { const en = it.webkitGetAsEntry && it.webkitGetAsEntry(); if (en) await walk(en, '') }
-    setFiles(out, '');
+    send(out);
   };
 }
-function setFiles(list, name) {
+// stop the browser opening a file dropped just outside the box
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => { if (!e.target.closest || !e.target.closest('#drop')) e.preventDefault() });
+$('folderPick').onchange = e => { const l = [...e.target.files].map(f => ({file:f, path:f.webkitRelativePath || f.name})); e.target.value=''; send(l) };
+async function send(list) {
   const files = list.filter(p => !p.path.split('/').pop().startsWith('.'));
-  const top = name || (files[0] ? files[0].path.split('/')[0] : '');
-  src = {files, local:null, label: files.length ? `${top} (${files.length} files)` : '', name};
-  showChosen();
-}
-$('folderPick').onchange = e => { setFiles([...e.target.files].map(f => ({file:f, path:f.webkitRelativePath || f.name})), ''); e.target.value='' };
-$('zipPick').onchange = e => { setFiles([...e.target.files].map(f => ({file:f, path:f.name})), ''); e.target.value='' };
-$('filePick').onchange = e => {
-  const list = [...e.target.files]; e.target.value = '';
-  if (!list.length) return;
-  const n = prompt("Whose files are these? This names the finished form.", '') || 'Resident';
-  setFiles(list.map(f => ({file:f, path:f.name})), n);
-};
-function useLocal() {
-  const v = $('localPath').value.trim().replace(/^"|"$/g, '');
-  if (!v) return toast("Paste the folder's location first.");
-  src = {files:[], local:{path:v}, label: `${v.split(/[\\/]/).filter(Boolean).pop()}, from this computer`}; showChosen();
-}
-function useInbox(n) { const name = decodeURIComponent(n); src = {files:[], local:{inbox:name}, label:`${name}, from your inbox`}; showChosen() }
-async function start() {
-  const common = {ma:$('ma').value, date:$('date').value, notes:$('notes').value, extra_names:$('extraNames').value,
-                  follow_up:$('followUp').checked, several:$('several').value};
-  $('startBtn').disabled = true; $('startMsg').textContent = src.local ? 'Copying the folder' : 'Copying the files';
+  if (!files.length) return toast('That folder looks empty.');
+  if (!S.template) return toast('Add the blank Support Audit form first, just once.');
+  const d = $('drop'); d.classList.add('busy');
+  const top = files[0].path.includes('/') ? files[0].path.split('/')[0] : 'Resident';
+  $('dropTitle').textContent = `Copying ${top} (${files.length} files)`; $('dropSub').textContent = 'It starts by itself in a moment';
   try {
-    let r;
-    if (src.local) r = await post('/api/batches/from-folder', {...src.local, ...common});
-    else {
-      const fd = new FormData();
-      for (const p of src.files) fd.append('files', p.file, p.path);
-      if (src.name) fd.append('folder_name', src.name);
-      for (const [k, v] of Object.entries(common)) fd.append(k, v);
-      r = await api('/api/batches', {method:'POST', body:fd});
-    }
-    src = {files:[], local:null, label:''};
-    location.hash = '#/round/' + r.id;
-    toast('Hiding names on this computer. Nothing has been sent yet.');
-  } catch(err) { $('startMsg').textContent = ''; $('startBtn').disabled = false; toast(err.message) }
+    const fd = new FormData();
+    for (const p of files) fd.append('files', p.file, p.path);
+    if (!files[0].path.includes('/')) fd.append('folder_name', top);
+    fd.append('ma', ($('ma') || {}).value || ''); fd.append('notes', ($('notes') || {}).value || '');
+    fd.append('follow_up', ($('followUp') || {}).checked ? 'true' : 'false'); fd.append('several', 'auto');
+    await api('/api/batches', {method:'POST', body:fd});
+    toast(`${top} is running. The forms will be saved when it finishes.`);
+    if ($('ma')) { $('ma').value = ''; $('notes').value = ''; $('followUp').checked = false }
+  } catch(err) { toast(err.message) }
+  finally { d.classList.remove('busy'); $('dropTitle').textContent = 'Drop a folder here'; $('dropSub').textContent = 'or click to choose one'; tick() }
 }
+async function openRound(id, what) { try { await post(`/api/batches/${id}/open-round?what=${what}`) } catch(e) { toast(e.message) } }
 
 // ---------- one round ----------
 function renderRound() {
@@ -487,7 +427,8 @@ function renderRound() {
         <div>${statusWords(r)}</div>
         <div class="row">${bandPill(r)}${scoreBar(r)}</div></div>
       ${liveLine(r)}
-      ${['failed','empty','stopped'].includes(r.status) ? whyBox(r.status==='empty' ? 'Nothing to audit' : r.status==='stopped' ? 'Stopped' : 'Why it did not finish', r.error || 'No reason was recorded. Press Show progress to see the last steps.') : ''}
+      ${r.note ? `<div class="note">${esc(r.note)}</div>` : ''}
+      ${['failed','empty','stopped'].includes(r.status) ? whyBox(r.status==='empty' ? 'Nothing to audit' : r.status==='stopped' ? 'Stopped' : 'Did not finish after three tries', r.error || 'No reason was recorded. Press Show progress to see the last steps.') : ''}
       <div class="row acts">
         ${r.has_final ? `<button class="btn small" onclick="openLocal('${L}',false)">Open in Word</button><button class="btn quiet small" onclick="openLocal('${L}',true)">Show in folder</button><a class="btn quiet small" href="/api/batches/${b.id}/download/${L}">Download</a>` : ''}
         ${['running','queued'].includes(r.status) ? `<button class="btn quiet small" onclick="act('stop','${L}')">Stop</button>` : ''}
@@ -509,7 +450,7 @@ function renderRound() {
     done:'Done.', failed:'Did not finish.', stopped:'Stopped.', stopping:'Stopping.'}[st] || st;
   if (put('rFeedback', `<h2>Overall Feedback Form</h2>${!b.feedback_template
       ? `<p class="muted">Put the blank Overall Feedback Form in the template folder (see Setup) and it is written for every round.</p>`
-      : `<p>${fbWords}</p>${['failed','stopped'].includes(st) ? whyBox('Why it did not finish', fb.error || 'No reason was recorded. Press Show progress.') : ''}<div class="row">
+      : `<p>${fbWords}</p>${fb.note ? `<div class="note">${esc(fb.note)}</div>` : ''}${['failed','stopped'].includes(st) ? whyBox('Why it did not finish', fb.error || 'No reason was recorded. Press Show progress.') : ''}<div class="row">
         ${fb.has_final ? `<button class="btn" onclick="openOut('feedback')">Open in Word</button><a class="btn quiet" href="/api/batches/${b.id}/download-round?what=feedback">Download</a>` : ''}
         ${['running','queued'].includes(st) ? `<button class="btn quiet small" onclick="fbAct('stop')">Stop</button>` : ''}
         ${['failed','stopped','done'].includes(st) || (st==='waiting' && rs.some(([, r]) => r.status==='done')) ? `<button class="btn quiet small" onclick="fbAct('run')">${st==='done' ? 'Write it again' : 'Write it now'}</button>` : ''}
@@ -600,21 +541,23 @@ function renderSetup() {
   const s = S;
   if (!$('setupView')) {
     $('main').innerHTML = `<div id="setupView">
-      <h1>Setup</h1><p class="lede">Done once. Files you put in these folders are picked up on their own.</p>
+      <h1>Forms and settings</h1><p class="lede">Done once. Everything here is stored on this computer and used for every audit.</p>
+      <div class="forms" id="setupForms"></div>
       <div class="split"><div class="panel"><h2>Checklist</h2><ul class="todo" id="todo"></ul></div>
       <div class="stack"><div class="panel"><h2>Privacy</h2>
         <label class="field" for="hideNames">Names to always hide</label>
         <div class="muted">Support workers, managers and anyone else who comes up a lot. One per line.</div>
         <textarea id="hideNames" style="margin-top:6px; min-height:110px"></textarea>
-        <label class="check"><input type="checkbox" id="checkFirst"> Let me check the hidden copy before anything goes to Claude</label>
-        <label class="field" for="outDir">For uploaded files, save finished forms in</label>
+        <label class="check"><input type="checkbox" id="checkFirst"> Stop each round so I can check the hidden copy before it goes to Claude (off: it just runs)</label>
+        <label class="field" for="outDir">Save finished forms in</label>
         <input type="text" id="outDir">
-        <div class="muted" style="margin-top:4px">Folders you paste or drop in the inbox get their own Completed Audits folder instead.</div>
+        <div class="muted" style="margin-top:4px">Each round gets its own folder in here, named after the folder you dropped. Folders copied into <code class="path">${esc(s.folders.inbox)}</code> start by themselves and save into a Completed Audits folder next to them.</div>
         <div class="row" style="margin-top:14px"><button class="btn" onclick="saveSettings()">Save settings</button></div></div>
       <div class="panel" id="refPanel"></div></div></div></div>`;
     $('hideNames').value = s.settings.hide_names.join('\n'); $('outDir').value = s.settings.output_dir; $('checkFirst').checked = s.settings.check_before_sending;
-    delete cache['todo']; delete cache['refPanel'];
+    delete cache['todo']; delete cache['refPanel']; delete cache['setupForms'];
   }
+  put('setupForms', formSlots(s));
   const li = s.login.loggedIn;
   const item = (ok, title, body, action='') => `<li><span class="tick ${ok?'done':'need'}">${ok?'✓':'!'}</span><div><b>${title}</b><div class="muted">${body}</div></div><div>${action}</div></li>`;
   put('todo',
@@ -632,8 +575,11 @@ function renderSetup() {
 async function saveSettings() {
   try { await post('/api/settings', {hide_names: $('hideNames').value.split('\n'), output_dir: $('outDir').value, check_before_sending: $('checkFirst').checked}); toast('Settings saved.') } catch(e) { toast(e.message) }
 }
-$('templateFile').onchange = async e => { const fd = new FormData(); fd.append('file', e.target.files[0]); e.target.value='';
-  try { await api('/api/template', {method:'POST', body:fd}); toast('Blank form added.') } catch(err) { toast(err.message) } tick() };
+async function addForm(e, kind) { const f = e.target.files[0]; e.target.value=''; if (!f) return;
+  const fd = new FormData(); fd.append('file', f); fd.append('kind', kind);
+  try { await api('/api/template', {method:'POST', body:fd}); toast(kind === 'feedback' ? 'Overall Feedback Form stored.' : 'Support Audit form stored.') } catch(err) { toast(err.message) } tick() }
+$('templateFile').onchange = e => addForm(e, 'audit');
+$('feedbackFile').onchange = e => addForm(e, 'feedback');
 $('refFiles').onchange = async e => { const fd = new FormData(); for (const f of e.target.files) fd.append('files', f); e.target.value='';
   try { await api('/api/reference', {method:'POST', body:fd}); toast('Reference files added.') } catch(err) { toast(err.message) } tick() };
 async function delRef(n) { await api('/api/reference/'+n, {method:'DELETE'}); toast('Removed.'); tick() }
@@ -646,7 +592,6 @@ async function claudeLogin() {
 function readRoute() {
   const h = location.hash.replace(/^#\/?/, '');
   if (h.startsWith('round/')) return {name:'round', id:h.slice(6)};
-  if (h === 'new') return {name:'new'};
   if (h === 'setup') return {name:'setup'};
   return {name:'home'};
 }
@@ -666,7 +611,7 @@ async function tick() {
     if (route.name === 'round') {
       try { D = await api('/api/batches/' + route.id) } catch(e) { D = null; location.hash = '#/'; return }
       renderRound(); await pollLogs();
-    } else if (route.name === 'new') renderNew();
+    }
     else if (route.name === 'setup') renderSetup();
     else renderHome();
   } catch(e) { put('main', `<div class="empty"><h3>Support Audit isn't responding</h3><p>Close this page and open Support Audit from the desktop icon again.</p></div>`) }

@@ -28,7 +28,7 @@ tools = Path("tools")
 sys.path.insert(0, str(tools)); import formkit as fk
 if "Overall Feedback Form" in prompt:   # the round's feedback form
     audits = Path(dirs[-1])
-    labels = sorted(p.name for p in audits.iterdir() if p.name.startswith("RESIDENT_"))
+    labels = sorted(p.name for p in audits.iterdir() if p.name.startswith("RESIDENT_") and (p / "score-result.json").exists())
     bands = {l: json.loads((audits / l / "score-result.json").read_text())["result"]["final_band"] for l in labels}
     shot = next(audits.rglob("shots/1.png"))
     doc = fk.open_form(tpl)

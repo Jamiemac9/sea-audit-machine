@@ -44,7 +44,14 @@ def settings() -> dict:
     s = runner.load_settings()
     s.setdefault("hide_names", [])
     s.setdefault("output_dir", str(DEFAULT_OUT))
-    s.setdefault("check_before_sending", True)
+    if s.get("flow") != 2:  # from now on: drop, run, save. The check step is opt-in.
+        s["flow"] = 2
+        s["check_before_sending"] = False
+        try:
+            runner.save_settings(s)
+        except Exception:
+            pass
+    s.setdefault("check_before_sending", False)
     return s
 
 
@@ -178,6 +185,8 @@ def redact(bid: str) -> dict:
         save(b)
         return b
     key = json.loads((d / "private" / "key.json").read_text(encoding="utf-8"))
+    if rep["leaks"]:
+        _withhold_leaks(rep, out, d / "private")
     held = [f for f in rep["files"] if f.get("status") == "held back"]
     for name, r in b["residents"].items():
         r["label"] = key["terms"][re.sub(r"\s+", " ", name.strip().lower())]
@@ -198,6 +207,28 @@ def redact(bid: str) -> dict:
     b["status"] = "blocked" if rep["leaks"] else "check"
     save(b)
     return b
+
+
+def _withhold_leaks(rep: dict, out: Path, private: Path):
+    """A file where a hidden detail survived is kept off Claude's copy, so the round can carry
+    on safely instead of stopping. It is listed as held back in the check and the report."""
+    bad = {lk["file"] for lk in rep["leaks"]}
+    keep = private / "withheld"
+    for rel in sorted(bad, key=len, reverse=True):
+        p = out / rel
+        if p.is_file():
+            dest = keep / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(p), dest)
+    for f in rep["files"]:
+        if not f.get("as") or f.get("status") == "held back":
+            continue
+        base = (Path(f["resident"].strip("[]")) / Path(f["as"]).with_suffix("")).as_posix()
+        if any(Path(b).as_posix().startswith(base) for b in bad):
+            f.update(status="held back", reason="a name or detail could not be hidden in it, so Claude did not see it")
+    rep["withheld"] = sorted(bad)
+    # anything still showing (for example in a folder name) does stop the round
+    rep["leaks"] = [lk for lk in rep["leaks"] if not (out / lk["file"]).is_file() and (out / lk["file"]).exists()]
 
 
 def preview_files(bid: str) -> list[dict]:
@@ -229,6 +260,7 @@ def approve(bid: str, labels: list[str] | None = None) -> list[str]:
         if r["status"] in ("check", "failed", "stopped", "done"):
             r["status"] = "queued"
             r.pop("error", None)
+            r.pop("tries", None)
             queued.append(name)
     b["status"] = "approved"
     save(b)
@@ -401,7 +433,8 @@ def out_dir(b: dict) -> Path:
     if b.get("source") and Path(b["source"]).is_dir():
         return Path(b["source"]) / "Completed Audits"
     base = Path(settings()["output_dir"]).expanduser()
-    return base / safe_name(b["ma"]) if b.get("ma") else base
+    name = b.get("ma") or b.get("folder_name")
+    return base / safe_name(name) if name else base
 
 
 def _unique(p: Path, overwrite: bool = False) -> Path:

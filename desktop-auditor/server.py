@@ -89,6 +89,7 @@ def worker():
                 with lock:
                     current["where"] = (bid, name)
                 pl.run_resident(bid, name, on_run=lambda r: current.update(run=r))
+                again(bid, "audit", name)
                 b = pl.load(bid)
                 if pl.round_ready_for_feedback(b):
                     b["feedback"] = {"status": "queued"}
@@ -101,6 +102,7 @@ def worker():
                 with lock:
                     current["where"] = (bid, "_round")
                 pl.run_feedback(bid, on_run=lambda r: current.update(run=r))
+                again(bid, "feedback", None)
             elif kind == "reference":
                 pl.refresh_reference()
         except KeyError:
@@ -119,6 +121,42 @@ def worker():
                     pl.write_report(bid)
                 except Exception:
                     pass
+
+
+MAX_TRIES = 3
+LIMIT_WAIT = 20 * 60   # usage limit: try again every 20 minutes
+LIMIT_TRIES = 72       # for up to a day
+
+
+def again(bid, kind, name):
+    """A run that ended without a form is tried again by itself: up to three times, or,
+    if the Claude usage limit was hit, every 20 minutes until the limit resets.
+    Only after that is it left as 'did not finish', with the reason."""
+    b = pl.load(bid)
+    item = b["residents"][name] if kind == "audit" else b.get("feedback") or {}
+    if item.get("status") != "failed":
+        if item.get("status") == "done":
+            item.pop("tries", None)
+            item.pop("note", None)
+            pl.save(b)
+        return
+    limit = "usage limit" in (item.get("error") or "").lower()
+    item["tries"] = item.get("tries", 1) + 1
+    if item["tries"] > (LIMIT_TRIES if limit else MAX_TRIES):
+        item["tries"] -= 1
+        item.pop("note", None)
+        pl.save(b)
+        return
+    wait = LIMIT_WAIT if limit else 20
+    at = time.strftime("%H:%M", time.localtime(time.time() + wait))
+    item["status"] = "queued"
+    item["note"] = (f"Claude's usage limit was reached. Trying again at {at}, and every 20 minutes until it resets."
+                    if limit else f"The last try stopped ({(item.get('error') or 'no reason')[:160]}). "
+                                  f"Trying again: attempt {item['tries']} of {MAX_TRIES}.")
+    pl.save(b)
+    pl.log(bid, (b["residents"][name]["label"].strip("[]") if kind == "audit" else "_round"),
+           f"--- Retry --- {item['note']}")
+    threading.Timer(wait, tasks.put, args=((kind, bid, name),)).start()
 
 
 def _mark_failed(bid, kind, name, why):
@@ -264,11 +302,12 @@ def state():
         batches.append({"id": b["id"], "created": b["created"], "status": b["status"], "ma": b["ma"],
                         "date": b.get("date"), "source": b.get("source"), "feedback": fb.get("status"),
                         "error": b.get("error"), "feedback_error": fb.get("error"),
-                        "has_scores": bool(b.get("scorebook")),
+                        "has_scores": bool(b.get("scorebook")), "folder_name": b.get("folder_name"),
+                        "feedback_note": fb.get("note"), "has_report": pl.report_path(b).exists(),
                         "residents": [{"name": n, "label": r.get("label"), "status": r["status"],
                                        "rating": r.get("rating"), "total": r.get("total"),
                                        "finished": r.get("finished"), "started": r.get("started"),
-                                       "error": r.get("error"),
+                                       "error": r.get("error"), "note": r.get("note"),
                                        "activity": pl.activity(b["id"], (r.get("label") or "").strip("[]"))
                                        if r["status"] in ("running", "stopping") else None}
                                       for n, r in b["residents"].items()]})
@@ -327,14 +366,19 @@ def claude_login():
 
 
 @app.post("/api/template")
-async def upload_template(file: UploadFile = File(...)):
+async def upload_template(file: UploadFile = File(...), kind: str = Form("")):
+    """Stored once and kept. Each kind of form has its own slot: adding one never removes the other."""
     if not file.filename.lower().endswith(".docx"):
         raise HTTPException(400, "The blank form must be a .docx file")
-    for old in pl.TEMPLATE_DIR.glob("*.docx"):
+    k = re.sub(r"[^a-z]", "", file.filename.lower())
+    if kind not in ("audit", "feedback"):
+        kind = "feedback" if ("feedback" in k or "overall" in k) else "audit"
+    old = pl.feedback_template_path() if kind == "feedback" else pl.template_path()
+    if old and old.exists():
         old.unlink()
-    dest = pl.TEMPLATE_DIR / safe_part(Path(file.filename).name)
+    dest = pl.TEMPLATE_DIR / ("Overall Feedback Form OG.docx" if kind == "feedback" else "Support Audit OG.docx")
     dest.write_bytes(await file.read())
-    return {"template": dest.name}
+    return {"template": dest.name, "kind": kind}
 
 
 @app.post("/api/reference")
@@ -431,6 +475,7 @@ def _batch_from_root(root: Path, several, ma: str, date: str, follow_up: bool, n
     bad_zips = unpack_zips(root)
     if bad_zips:
         raise HTTPException(400, "Could not open: " + "; ".join(bad_zips) + ". Unzip it in File Explorer and drop the folder.")
+    dropped_name = root.name
     files, dirs = _kids(root)
     if several is None:
         several = looks_like_several(root)
@@ -443,6 +488,8 @@ def _batch_from_root(root: Path, several, ma: str, date: str, follow_up: bool, n
         raise HTTPException(400, "That folder has no files in it.")
     names = [n.strip() for n in re.split(r"[\n,;]+", extra_names) if n.strip()]
     b = pl.new_batch(groups, ma.strip(), date.strip(), follow_up, notes.strip(), names, source)
+    b["folder_name"] = re.sub(r"^_upload_\w+$", "", dropped_name) or ("Resident" if not several else "Round")
+    pl.save(b)
     pl.log(b["id"], "", f"Added {len(groups)} resident file(s). Redacting on this computer...")
     tasks.put(("redact", b["id"], None))
     return {"id": b["id"]}
@@ -727,6 +774,8 @@ def retry(bid: str, label: str):
     if r["status"] in ("running", "queued", "stopping"):
         raise HTTPException(400, "Already running or waiting")
     r["status"] = "queued"
+    r.pop("tries", None)
+    r.pop("note", None)
     if (b.get("feedback") or {}).get("status") not in ("running", "queued", "stopping"):
         b["feedback"] = {"status": "waiting"}
     pl.save(b)

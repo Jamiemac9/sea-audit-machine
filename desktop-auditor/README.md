@@ -10,9 +10,9 @@ computer, **without Claude ever seeing who anyone is.**
    numbers, emails, dates of birth, NI and NHS numbers are swapped for labels like
    `[RESIDENT_A]`, `[PERSON_2]`, `[ADDRESS_1]`. This happens on your computer with free,
    open-source tools. Nothing is sent anywhere during this step.
-3. **You check it.** The page shows exactly what Claude will get, page by page, and
-   confirms it searched the copy again and found none of the hidden details left. If you
-   spot a name it missed, type it in and it hides it and checks again.
+3. **It checks itself.** The hidden copy is searched again for every hidden detail; any
+   file where one survived is kept back from Claude and listed in the report. (If you want
+   to look before anything is sent, tick the check option in Forms and settings.)
 4. **Claude audits the hidden copy** and writes the form using the labels
    ("[PERSON_2] supported [RESIDENT_A] to…").
 5. **Your computer puts the real details back.** Labels become names again and every
@@ -85,17 +85,14 @@ uploads, your "Save finished forms in" folder):
    rules, your `SKILL.md`, completed audits), and list the names to always hide (support
    workers, managers).
 2. Give it the resident's folder, any of these ways:
-   - **Paste its location** (easiest): in File Explorer open the folder, click the address
-     bar, copy, paste into the page, press "Use this folder".
-   - Put the folder in `SupportAudit\inbox` and click it on the page.
-   - "Choose a folder…" (go *into* the folder and press Upload: the files don't show in
-     that window, which is normal), "Choose files…", or drag them onto the page.
-
-   For a whole property, tick "several residents". Type the managing agent, press **Start**.
-3. When it says **ready to check**, click through "What Claude will see", then press
-   **Looks right: send to Claude**.
-4. When it's **done**: **Open in Word**. It's also saved in your "Save finished forms in"
-   folder, under the managing agent's name.
+   Drag the folder (or a folder of zips, or one zip) onto **Drop a folder here**. That's
+   it: no buttons. A property folder with one folder or zip per resident is split up by itself.
+   The blank Support Audit form and Overall Feedback Form are stored once in **Forms and
+   settings** and reused every time.
+3. It runs on its own. If an audit stops, it is tried again (three times; if Claude's usage
+   limit is hit, every 20 minutes until it resets).
+4. When it's **done**, press **Report** or **Folder** on the round. Forms, the scores workbook,
+   the Overall Feedback Form and a Delivered report are saved in Documents\\Support Audits\\<folder name>.
 5. When the round is closed, **Delete this round** removes the copies and the key.
 
 ## Where things are
