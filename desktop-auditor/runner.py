@@ -56,18 +56,25 @@ def find_claude(preferred: str = "") -> str | None:
     return None
 
 
+# On Windows a console program started from a windowless app opens its own terminal window.
+# This flag stops that (the "terminal popping up").
+NO_WINDOW = {"creationflags": 0x08000000} if os.name == "nt" else {}
+
+
 def login_status(claude: str | None) -> dict:
     """Ask Claude Code whether it is logged in. Free: sends no message."""
     if not claude:
         return {"loggedIn": False, "reason": "Claude Code is not installed"}
     try:
         out = subprocess.run(_cmd_prefix(claude) + ["auth", "status", "--json"], capture_output=True,
-                             text=True, timeout=30)
+                             text=True, timeout=60, **NO_WINDOW)
         data = json.loads(out.stdout or "{}")
-        return {"loggedIn": bool(data.get("loggedIn")), "method": data.get("authMethod"),
-                "expires": data.get("loginExpiresAt")}
-    except Exception as e:
-        return {"loggedIn": False, "reason": f"{type(e).__name__}: {e}"}
+    except Exception as e:  # could not tell (slow start, update in progress): say so, don't say "logged out"
+        return {"loggedIn": None, "reason": f"{type(e).__name__}: {e}"}
+    if "loggedIn" not in data:
+        return {"loggedIn": None, "reason": (out.stderr or out.stdout or "no answer")[:300]}
+    return {"loggedIn": bool(data.get("loggedIn")), "method": data.get("authMethod"),
+            "expires": data.get("loginExpiresAt")}
 
 
 def _cmd_prefix(claude: str) -> list[str]:
@@ -158,7 +165,7 @@ class Run:
         self.on_line(f"Started. Work files: {self.job['work']}")
         self.proc = subprocess.Popen(self.command(claude, runtime), cwd=runtime, env=env,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                     text=True, encoding="utf-8", errors="replace", bufsize=1)
+                                     text=True, encoding="utf-8", errors="replace", bufsize=1, **NO_WINDOW)
         for raw in self.proc.stdout:
             log.write(raw)
             self._handle(raw.strip())

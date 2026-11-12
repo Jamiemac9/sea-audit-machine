@@ -41,6 +41,7 @@
   .Gold { color:#a16207; } .Green { color:#15803d; } .Amber { color:var(--amber); } .Red { color:var(--warn); }
   .box { border:1px solid var(--line); border-radius:8px; padding:12px; margin-top:10px; }
   .box.warn { border-color:#f1c7c3; background:#fff8f7; } .box.good { border-color:#bfe3d0; background:#f6fbf8; } .box.info { border-color:#c9dbfb; background:#f6f9ff; }
+  code.path { background:#f2f4f7; padding:1px 5px; border-radius:4px; font-size:12px; word-break:break-all; user-select:all; }
   .viewer { display:grid; grid-template-columns: 260px 1fr; gap:12px; margin-top:8px; }
   @media (max-width: 900px) { .viewer { grid-template-columns: 1fr; } }
   .viewer ul { list-style:none; padding:0; margin:0; max-height:520px; overflow:auto; font-size:13px; }
@@ -62,11 +63,13 @@
   <section>
     <h2>1. Blank form</h2>
     <div id="templateState" class="muted">…</div>
+    <div class="muted">Or put it straight in <code class="path" id="tplPath"></code></div>
     <input type="file" id="templateFile" accept=".docx" hidden>
     <button class="light small" style="margin-top:6px" onclick="templateFile.click()">Upload Support_Audit_OG.docx</button>
 
     <h2 style="margin-top:18px">2. Reference files</h2>
     <div class="muted">House style, rules, your SKILL.md and your completed audits. Names in them are hidden too before Claude reads them.</div>
+    <div class="muted">Or put them straight in <code class="path" id="refPath"></code> (picked up automatically)</div>
     <ul class="files" id="refList"></ul>
     <div id="refNote" class="muted"></div>
     <input type="file" id="refFiles" multiple hidden>
@@ -83,10 +86,21 @@
 
   <section>
     <h2>3. New audit</h2>
-    <div class="drop" id="drop">Drop the resident's folder here, or click to choose it<br><span class="muted">A .zip of the folder works too</span></div>
+    <label for="localPath">Easiest: paste the resident's folder location</label>
+    <div class="muted">In File Explorer, open the resident's folder, click the address bar at the top, copy (Ctrl+C) and paste it here (Ctrl+V).</div>
+    <div class="row" style="margin-top:4px"><input type="text" id="localPath" placeholder="e.g. C:\Users\you\Desktop\Blue Crescent\Resident Name" style="flex:1"><button class="light small" onclick="useLocal()">Use this folder</button></div>
+    <div id="inboxBox" style="display:none; margin-top:10px"><label>Or pick one from your inbox folder</label><div id="inboxList" class="row"></div></div>
+    <div class="drop" id="drop" style="margin-top:12px">Or drag the folder or its files here</div>
+    <div class="row" style="margin-top:6px">
+      <button class="light small" onclick="folderPick.click()">Choose a folder…</button>
+      <button class="light small" onclick="filePick.click()">Choose files…</button>
+      <button class="light small" onclick="zipPick.click()">Choose a .zip…</button>
+    </div>
+    <div class="muted" style="margin-top:4px">With "Choose a folder", go <b>into</b> the resident's folder and press Upload. Files don't show in that window; that's normal.</div>
     <input type="file" id="folderPick" webkitdirectory multiple hidden>
+    <input type="file" id="filePick" multiple hidden>
     <input type="file" id="zipPick" accept=".zip" hidden>
-    <div class="muted" id="picked" style="margin-top:6px"></div>
+    <div class="muted" id="picked" style="margin-top:6px; font-weight:600"></div>
     <label class="inline"><input type="checkbox" id="several"> This folder holds several residents (one folder each)</label>
     <label for="ma">Managing agent (as on licence)</label>
     <input type="text" id="ma" placeholder="Leave blank to take it from the licence">
@@ -100,7 +114,6 @@
     <textarea id="notes"></textarea>
     <div class="row" style="margin-top:12px">
       <button id="startBtn" onclick="start()" disabled>Start</button>
-      <a href="#" class="muted" onclick="zipPick.click();return false">or upload a .zip</a>
       <span id="startMsg" class="muted"></span>
     </div>
   </section>
@@ -113,7 +126,7 @@
 </main>
 <script>
 const $ = id => document.getElementById(id);
-let picked = [], selected = null, view = {path:null, page:1, pages:1}, logState = {}, openLogs = {}, lastDetail = '';
+let picked = [], local = null, filesName = '', selected = null, view = {path:null, page:1, pages:1}, logState = {}, openLogs = {}, lastDetail = '';
 $('date').value = new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'2-digit', year:'2-digit'});
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -130,10 +143,15 @@ async function refresh() {
   const s = await api('/api/state');
   const t = s.tools;
   $('chips').innerHTML =
-    (s.login.loggedIn ? '<span class="on">Claude: logged in</span>' : '<span class="off">Claude: not logged in</span>') +
+    (s.login.loggedIn === true ? '<span class="on">Claude: logged in</span>'
+      : s.login.loggedIn === null ? `<span title="${esc(s.login.reason||'')}">Claude: checking…</span>`
+      : '<span class="off" title="Open a terminal and type: claude auth login">Claude: not logged in</span>') +
     `<span class="${t.name_finder?'on':'off'}">Name finder ${t.name_finder?'on':'off'}</span>` +
     `<span class="${t.ocr?'on':'off'}">Scan reader ${t.ocr?'on':'off'}</span>` +
     `<span class="${t.office?'on':'off'}">Word converter ${t.office?'on':'off'}</span>`;
+  $('tplPath').textContent = s.folders.template; $('refPath').textContent = s.folders.reference;
+  $('inboxBox').style.display = s.inbox.length ? '' : 'none';
+  $('inboxList').innerHTML = s.inbox.map(f => `<button class="light small" onclick="useInbox('${encodeURIComponent(f.name)}')">${esc(f.name)} (${f.files} files)</button>`).join('');
   $('templateState').innerHTML = s.template ? `<span class="ok">✓</span> ${esc(s.template)}` : '<span class="bad">Not uploaded yet</span>';
   $('refList').innerHTML = s.reference.map(n => `<li><span>${esc(n)}</span><button class="light small" onclick="delRef('${encodeURIComponent(n)}')">Remove</button></li>`).join('') || '<li class="muted">Nothing yet</li>';
   $('refNote').innerHTML = (s.reference_held_back.length ? `<span class="bad">Not given to Claude (could not be hidden safely): ${s.reference_held_back.map(esc).join(', ')}</span>` : '')
@@ -147,7 +165,7 @@ async function refresh() {
       <span class="pill ${b.status}">${label(b.status)}</span></div>
       <div style="margin-top:4px">${b.residents.map(r => `<span class="pill ${r.status}">${esc(r.name)}: ${label(r.status)}${r.rating?` · <b class="${r.rating}">${r.rating}</b>`:''}</span>`).join(' ')}</div></div>`).join('')
     || '<div class="muted">No audits yet</div>';
-  $('startBtn').disabled = !picked.length;
+  $('startBtn').disabled = !(picked.length || local);
 }
 const label = s => ({check:'ready to check', redacting:'hiding names…', approved:'sent', blocked:'cannot send', queued:'waiting', running:'Claude is auditing', done:'done', failed:'failed', stopped:'stopped', waiting:'waiting', stopping:'stopping'}[s] || s);
 
@@ -163,8 +181,24 @@ async function delRef(n) { await api('/api/reference/'+n, {method:'DELETE'}); re
 
 // ---- choosing a folder ----
 $('drop').onclick = () => $('folderPick').click();
-$('folderPick').onchange = e => setPicked([...e.target.files].map(f => ({file:f, path:f.webkitRelativePath || f.name})));
-$('zipPick').onchange = e => setPicked([...e.target.files].map(f => ({file:f, path:f.name})));
+$('folderPick').onchange = e => { filesName=''; setPicked([...e.target.files].map(f => ({file:f, path:f.webkitRelativePath || f.name}))) };
+$('zipPick').onchange = e => { filesName=''; setPicked([...e.target.files].map(f => ({file:f, path:f.name}))) };
+$('filePick').onchange = e => {
+  const list = [...e.target.files];
+  if (!list.length) return;
+  filesName = prompt("Resident's name (used for the finished form's name):", '') || 'Resident';
+  setPicked(list.map(f => ({file:f, path:f.name})));
+};
+function useLocal() {
+  const v = $('localPath').value.trim().replace(/^"|"$/g, '');
+  if (!v) return alert("Paste the folder's location first.");
+  picked = []; local = {path: v};
+  $('picked').textContent = `Ready: ${v.split(/[\\/]/).filter(Boolean).pop()} (from this computer)`; refresh();
+}
+function useInbox(n) {
+  picked = []; local = {inbox: decodeURIComponent(n)};
+  $('picked').textContent = `Ready: ${decodeURIComponent(n)} (from your inbox folder)`; refresh();
+}
 $('drop').ondragover = e => { e.preventDefault(); $('drop').classList.add('over') };
 $('drop').ondragleave = () => $('drop').classList.remove('over');
 $('drop').ondrop = async e => {
@@ -180,12 +214,26 @@ $('drop').ondrop = async e => {
   setPicked(out);
 };
 function setPicked(list) {
+  local = null;
   picked = list.filter(p => !p.path.split('/').pop().startsWith('.'));
-  $('picked').textContent = picked.length ? `${picked[0].path.split('/')[0]}: ${picked.length} files ready` : '';
+  const top = filesName || picked[0]?.path.split('/')[0] || '';
+  $('picked').textContent = picked.length ? `Ready: ${top} (${picked.length} files)` : '';
   refresh();
 }
 async function start() {
+  if (local) {
+    $('startBtn').disabled = true; $('startMsg').textContent = 'Copying the folder…';
+    try {
+      const r = await post('/api/batches/from-folder', {...local, ma:$('ma').value, date:$('date').value, notes:$('notes').value,
+        extra_names:$('extraNames').value, follow_up:$('followUp').checked, several:$('several').checked});
+      $('startMsg').textContent = 'Hiding names on this computer…';
+      local = null; $('localPath').value=''; $('picked').textContent=''; $('notes').value=''; $('extraNames').value='';
+      openRound(r.id);
+    } catch(err) { $('startMsg').textContent=''; alert(err.message) }
+    return refresh();
+  }
   const fd = new FormData();
+  if (filesName) fd.append('folder_name', filesName);
   for (const p of picked) fd.append('files', p.file, p.path);
   for (const k of ['ma','date','notes']) fd.append(k, $(k).value);
   fd.append('extra_names', $('extraNames').value); fd.append('follow_up', $('followUp').checked); fd.append('several', $('several').checked);

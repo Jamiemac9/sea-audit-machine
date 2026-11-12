@@ -23,6 +23,7 @@ cannot be redacted is never copied across.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -340,7 +341,8 @@ def docx_to_pdf(src: Path, out_dir: Path) -> Path | None:
     if not office:
         return None
     subprocess.run([office, "--headless", "--convert-to", "pdf", "--outdir", str(out_dir), str(src)],
-                   capture_output=True, timeout=180)
+                   capture_output=True, timeout=180,
+                   **({"creationflags": 0x08000000} if os.name == "nt" else {}))
     pdf = out_dir / (src.stem + ".pdf")
     return pdf if pdf.exists() else None
 
