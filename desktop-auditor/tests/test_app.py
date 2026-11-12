@@ -45,7 +45,8 @@ def main():
     home = tmp / "SupportAudit"; home.mkdir()
     out_dir = tmp / "Finished"
     (home / "settings.json").write_text(json.dumps({"claude_path": str(ROOT / "tests" / "fake_claude.py"),
-                                                    "output_dir": str(out_dir)}))
+                                                    "output_dir": str(out_dir), "flow": 2,
+                                                    "check_before_sending": True}))
     env = dict(os.environ, SA_HOME=str(home), SA_PORT=str(PORT), FAKE_SECRETS=json.dumps(SECRETS))
     srv = subprocess.Popen([sys.executable, "server.py"], cwd=ROOT, env=env, stdout=open(tmp / "server.log", "w"), stderr=subprocess.STDOUT)
     try:
