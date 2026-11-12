@@ -76,6 +76,13 @@ def main():
         st = ta.call("/api/state")
         rb = next(x for x in st["batches"] if x["id"] == bid)
         assert any(r["error"] for r in rb["residents"]), rb
+        import urllib.request
+        page = urllib.request.urlopen(ta.BASE + f"/api/batches/{bid}/download-round?what=report").read().decode()
+        assert f"/api/batches/{bid}/download/RESIDENT_A" in page, page   # links work from the browser
+        new = ta.call(f"/api/batches/{bid}/restart", data={})["id"]
+        nb = ta.wait(lambda: (lambda b: b if b["status"] != "redacting" else None)(ta.call(f"/api/batches/{new}")))
+        assert sorted(nb["residents"]) == names, nb["residents"]
+        assert bid not in [x["id"] for x in ta.call("/api/state")["batches"]]
         print("Delivered report:", report)
         print("ALL DROP TESTS PASSED")
     finally:

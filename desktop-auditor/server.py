@@ -211,9 +211,51 @@ def inbox_watcher():
             pass
 
 
+def _zip_only(b: dict) -> bool:
+    """A round made before zips were opened: every file it had was a held-back .zip."""
+    files = (b.get("report") or {}).get("files") or []
+    return bool(files) and all(f.get("status") == "held back" and str(f.get("file", "")).lower().endswith(".zip")
+                               for f in files) and not any(r["status"] == "done" for r in b["residents"].values())
+
+
+def restart_round(bid: str) -> dict:
+    """Start a round again from the files it was given, with today's handling (zips opened,
+    residents split up). The old round is removed; nothing has to be dropped in again."""
+    b = pl.load(bid)
+    if any(r["status"] in ("running", "stopping") for r in b["residents"].values()):
+        raise HTTPException(400, "Stop the running audit first")
+    for r in b["residents"].values():
+        if r["status"] == "queued":
+            r["status"] = "stopped"   # cancels a waiting retry
+    pl.save(b)
+    upload = pl.bdir(bid) / "private" / "upload"
+    kids = [p for p in upload.iterdir() if p.is_dir()]
+    staged = pl.HOME / f"_upload_{uuid.uuid4().hex[:8]}"
+    try:
+        if len(kids) == 1:
+            shutil.copytree(kids[0], staged / kids[0].name)
+            root, several = staged / kids[0].name, None
+        else:
+            name = safe_part(b.get("folder_name") or b.get("ma") or "Round")
+            shutil.copytree(upload, staged / name)
+            root, several = staged / name, True
+        new = _batch_from_root(root, several, b.get("ma", ""), b.get("date", ""), b.get("follow_up", False),
+                               b.get("notes", ""), "\n".join(b.get("extra_names", [])), b.get("source"))
+    finally:
+        shutil.rmtree(staged, ignore_errors=True)
+    pl.delete(bid)
+    return new
+
+
 def recover():
     for bf in sorted(pl.BATCHES.glob("*/batch.json"), key=lambda p: p.stat().st_mtime):
         b = json.loads(bf.read_text(encoding="utf-8"))
+        if _zip_only(b) and not any(r["status"] in ("running", "stopping") for r in b["residents"].values()):
+            try:
+                restart_round(b["id"])
+                continue
+            except Exception:
+                pass
         changed = False
         if b["status"] == "redacting":
             tasks.put(("redact", b["id"], None))
@@ -689,6 +731,22 @@ def _open(target: Path, folder: bool):
         subprocess.run(["xdg-open", str(target.parent if folder and target.is_file() else target)])
 
 
+def _report_links(html: str, bid: str) -> str:
+    """In the browser, the report's links go through the app (open in Word / download)."""
+    b = pl.load(bid)
+    for name, r in b["residents"].items():
+        if r.get("final"):
+            fn = Path(r["final"]).name
+            lab = (r.get("label") or "").strip("[]")
+            html = html.replace(f'href="{fn}"', f'href="/api/batches/{bid}/download/{lab}"')
+    fb = b.get("feedback") or {}
+    if fb.get("final"):
+        html = html.replace(f'href="{Path(fb["final"]).name}"', f'href="/api/batches/{bid}/download-round?what=feedback"')
+    if b.get("scorebook"):
+        html = html.replace(f'href="{Path(b["scorebook"]).as_uri()}"', f'href="/api/batches/{bid}/download-round?what=scores"')
+    return html
+
+
 @app.post("/api/batches/{bid}/open-round")
 def open_round(bid: str, what: str = "folder"):
     """Open the round's Completed Audits folder, its scoring workbook or its feedback form."""
@@ -711,9 +769,9 @@ def open_round(bid: str, what: str = "folder"):
 @app.get("/api/batches/{bid}/download-round")
 def download_round(bid: str, what: str = "feedback"):
     b = get_batch(bid)
-    if what == "report":
+    if what == "report":   # shown as a page in the browser, never through Windows "open with"
         p = pl.write_report(bid) or pl.report_path(b)
-        return FileResponse(p, media_type="text/html")
+        return Response(_report_links(p.read_text(encoding="utf-8"), bid), media_type="text/html")
     p = Path(b["scorebook"]) if what == "scores" and b.get("scorebook") else \
         Path((b.get("feedback") or {}).get("final") or "")
     if not p.name or not p.exists():
@@ -782,6 +840,12 @@ def retry(bid: str, label: str):
     pl.log(bid, label.strip("[]"), "\n--- Retry ---")
     tasks.put(("audit", bid, name))
     return {"ok": True}
+
+
+@app.post("/api/batches/{bid}/restart")
+def restart(bid: str):
+    get_batch(bid)
+    return restart_round(bid)
 
 
 @app.delete("/api/batches/{bid}")
