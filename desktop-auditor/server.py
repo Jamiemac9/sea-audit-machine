@@ -194,6 +194,9 @@ def state():
         "settings": {k: s[k] for k in ("hide_names", "output_dir", "check_before_sending")},
         "tools": {"name_finder": R._NLP is not None, "ocr": R._OCR, "office": bool(R.soffice())},
         "local": LOCAL,
+        "inbox": [{"name": p.name, "files": sum(1 for f in p.rglob("*") if f.is_file())}
+                  for p in sorted(pl.INBOX.iterdir()) if p.is_dir()],
+        "folders": {"template": str(pl.TEMPLATE_DIR), "reference": str(pl.REFERENCE), "inbox": str(pl.INBOX)},
         "batches": batches,
     }
 
@@ -242,17 +245,35 @@ def delete_reference(name: str):
 
 # ---------- rounds ----------
 
+def _batch_from_root(root: Path, several: bool, ma: str, date: str, follow_up: bool, notes: str,
+                     extra_names: str) -> dict:
+    groups = ([p for p in sorted(root.iterdir()) if p.is_dir() and not p.name.startswith(".")]
+              if several else [root])
+    if not groups:
+        raise HTTPException(400, "No resident folders found inside that folder.")
+    if not any(f.is_file() for g in groups for f in g.rglob("*")):
+        raise HTTPException(400, "That folder has no files in it.")
+    names = [n.strip() for n in re.split(r"[\n,;]+", extra_names) if n.strip()]
+    b = pl.new_batch(groups, ma.strip(), date.strip(), follow_up, notes.strip(), names)
+    pl.log(b["id"], "", f"Added {len(groups)} resident file(s). Redacting on this computer...")
+    tasks.put(("redact", b["id"], None))
+    return {"id": b["id"]}
+
+
 @app.post("/api/batches")
 async def create_batch(files: list[UploadFile] = File(...), ma: str = Form(""), date: str = Form(""),
                        follow_up: bool = Form(False), notes: str = Form(""), several: bool = Form(False),
-                       extra_names: str = Form("")):
+                       extra_names: str = Form(""), folder_name: str = Form("")):
     if not pl.template_path():
-        raise HTTPException(400, "Upload the blank form first (step 1).")
+        raise HTTPException(400, "Put the blank form in the template folder first (step 1).")
     staged = pl.HOME / f"_upload_{uuid.uuid4().hex[:8]}"
     staged.mkdir()
     try:
         for f in files:
-            dest = staged / safe_rel(f.filename)
+            rel = safe_rel(f.filename)
+            if folder_name and len(rel.parts) == 1:  # loose files chosen one by one
+                rel = Path(safe_part(folder_name)) / rel
+            dest = staged / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(await f.read())
         files_now = [p for p in staged.rglob("*") if p.is_file()]
@@ -280,15 +301,32 @@ async def create_batch(files: list[UploadFile] = File(...), ma: str = Form(""), 
             for p in tops:
                 if p != root:
                     shutil.move(str(p), str(root / p.name))
-        groups = ([p for p in sorted(root.iterdir()) if p.is_dir() and not p.name.startswith(".")]
-                  if several else [root])
-        if not groups:
-            raise HTTPException(400, "No resident folders found inside that folder.")
-        names = [n.strip() for n in re.split(r"[\n,;]+", extra_names) if n.strip()]
-        b = pl.new_batch(groups, ma.strip(), date.strip(), follow_up, notes.strip(), names)
-        pl.log(b["id"], "", f"Added {len(groups)} resident file(s). Redacting on this computer...")
-        tasks.put(("redact", b["id"], None))
-        return {"id": b["id"]}
+        return _batch_from_root(root, several, ma, date, follow_up, notes, extra_names)
+    finally:
+        shutil.rmtree(staged, ignore_errors=True)
+
+
+@app.post("/api/batches/from-folder")
+def create_batch_from_folder(body: dict = Body(...)):
+    """Use a folder already on this computer (pasted location, or one in the inbox).
+    The folder is copied; the original is left exactly as it is."""
+    if not LOCAL:
+        raise HTTPException(400, "Only on this computer")
+    if not pl.template_path():
+        raise HTTPException(400, "Put the blank form in the template folder first (step 1).")
+    raw = (body.get("path") or "").strip().strip('"').strip("'")
+    if body.get("inbox"):
+        raw = str(pl.INBOX / safe_part(body["inbox"]))
+    src = Path(os.path.expandvars(raw)).expanduser()
+    if not raw or not src.is_dir():
+        raise HTTPException(400, f"Can't find that folder: {raw or '(empty)'}. In File Explorer, open the "
+                                 "resident's folder, click the address bar, copy it and paste it here.")
+    staged = pl.HOME / f"_upload_{uuid.uuid4().hex[:8]}"
+    try:
+        shutil.copytree(src, staged / src.name, ignore=shutil.ignore_patterns(".*", "~$*", "desktop.ini", "Thumbs.db"))
+        return _batch_from_root(staged / src.name, bool(body.get("several")), body.get("ma", ""),
+                                body.get("date", ""), bool(body.get("follow_up")), body.get("notes", ""),
+                                body.get("extra_names", ""))
     finally:
         shutil.rmtree(staged, ignore_errors=True)
 

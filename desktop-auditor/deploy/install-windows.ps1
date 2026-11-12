@@ -62,9 +62,13 @@ if (-not (Test-Path $claude) -and -not (Have "claude")) {
 } else { Say "Claude Code: already installed" }
 
 # ---- 2. the app ----
-New-Item -ItemType Directory -Force -Path $SA, (Join-Path $SA "template"), (Join-Path $SA "reference") | Out-Null
+New-Item -ItemType Directory -Force -Path $SA, (Join-Path $SA "template"), (Join-Path $SA "reference"), (Join-Path $SA "inbox") | Out-Null
 if (Test-Path (Join-Path $App ".git")) {
   Say "Updating the app"
+  Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' OR Name='python.exe'" |
+    Where-Object { $_.CommandLine -like '*server.py*' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  Start-Sleep -Seconds 2
   git -C $App pull --ff-only | Out-Host
 } else {
   Say "Downloading the app"
@@ -121,5 +125,6 @@ Write-Host ""
 Write-Host "Done." -ForegroundColor Green
 Write-Host "Drop the blank form in:      $SA\template"
 Write-Host "Drop your reference files in: $SA\reference"
+Write-Host "Resident folders can go in:   $SA\inbox  (or paste their location on the page)"
 Write-Host "Open the app any time from the 'Support Audit' icon on your desktop, or http://127.0.0.1:8765"
 Read-Host "Press Enter to close"

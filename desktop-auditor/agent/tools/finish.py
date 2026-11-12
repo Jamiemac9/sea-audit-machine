@@ -10,6 +10,7 @@ Usage: python finish.py <finished.docx> <work_dir>
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -60,7 +61,8 @@ def main(docx_path, work):
     out = work / "check"
     out.mkdir(parents=True, exist_ok=True)
     subprocess.run([office, "--headless", "--convert-to", "pdf", "--outdir", str(out), str(docx_path)],
-                   check=True, capture_output=True, timeout=180)
+                   check=True, capture_output=True, timeout=180,
+                   **({"creationflags": 0x08000000} if os.name == "nt" else {}))
     pdf = out / (docx_path.stem + ".pdf")
     d = fitz.open(pdf)
     for i, page in enumerate(d, 1):

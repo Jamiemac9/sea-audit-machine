@@ -72,8 +72,14 @@ before Claude Code).
 1. **Once:** upload the blank `Support_Audit_OG.docx`, your reference files (house style,
    rules, your `SKILL.md`, completed audits), and list the names to always hide (support
    workers, managers).
-2. Drop the resident's folder (or a property folder and tick "several residents"), type the
-   managing agent, press **Start**.
+2. Give it the resident's folder, any of these ways:
+   - **Paste its location** (easiest): in File Explorer open the folder, click the address
+     bar, copy, paste into the page, press "Use this folder".
+   - Put the folder in `SupportAudit\inbox` and click it on the page.
+   - "Choose a folder…" (go *into* the folder and press Upload: the files don't show in
+     that window, which is normal), "Choose files…", or drag them onto the page.
+
+   For a whole property, tick "several residents". Type the managing agent, press **Start**.
 3. When it says **ready to check**, click through "What Claude will see", then press
    **Looks right: send to Claude**.
 4. When it's **done**: **Open in Word**. It's also saved in your "Save finished forms in"

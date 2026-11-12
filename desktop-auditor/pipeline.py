@@ -32,9 +32,10 @@ BATCHES = HOME / "batches"
 TEMPLATE_DIR = HOME / "template"
 REFERENCE = HOME / "reference"
 REFERENCE_RED = HOME / "reference_redacted"
+INBOX = HOME / "inbox"
 DEFAULT_OUT = Path.home() / "Documents" / "Support Audits"
 
-for d in (BATCHES, TEMPLATE_DIR, REFERENCE, REFERENCE_RED):
+for d in (BATCHES, TEMPLATE_DIR, REFERENCE, REFERENCE_RED, INBOX):
     d.mkdir(parents=True, exist_ok=True)
 
 
