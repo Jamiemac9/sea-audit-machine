@@ -248,28 +248,33 @@ def restart_round(bid: str) -> dict:
 
 
 def recover():
+    runner.kill_leftovers()
     for bf in sorted(pl.BATCHES.glob("*/batch.json"), key=lambda p: p.stat().st_mtime):
         b = json.loads(bf.read_text(encoding="utf-8"))
-        if _zip_only(b) and not any(r["status"] in ("running", "stopping") for r in b["residents"].values()):
-            try:
-                restart_round(b["id"])
-                continue
-            except Exception:
-                pass
         changed = False
         if b["status"] == "redacting":
             tasks.put(("redact", b["id"], None))
         for name, r in b["residents"].items():
-            if r["status"] in ("running", "stopping"):
-                r["status"] = "failed"
-                r["error"] = "The app was closed or the computer restarted while this was running. Press Retry."
+            if r["status"] == "running":   # cut off by the app closing or updating: just run it again
+                r["status"] = "queued"
+                r["note"] = "The app restarted while this was running, so it is starting again."
+                r.pop("error", None)
+                changed = True
+                tasks.put(("audit", b["id"], name))
+            elif r["status"] == "stopping":
+                r["status"] = "stopped"
                 changed = True
             elif r["status"] == "queued":
                 tasks.put(("audit", b["id"], name))
         fb = b.get("feedback") or {}
-        if fb.get("status") in ("running", "stopping"):
-            fb["status"] = "failed"
-            fb["error"] = "The app was closed or the computer restarted while this was running. Press Retry."
+        if fb.get("status") == "running":
+            fb["status"] = "queued"
+            fb["note"] = "The app restarted while this was running, so it is starting again."
+            fb.pop("error", None)
+            changed = True
+            tasks.put(("feedback", b["id"], None))
+        elif fb.get("status") == "stopping":
+            fb["status"] = "stopped"
             changed = True
         elif fb.get("status") == "queued":
             tasks.put(("feedback", b["id"], None))
