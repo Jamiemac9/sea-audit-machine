@@ -96,7 +96,9 @@ $s = $ws.CreateShortcut((Join-Path $startup "Support Audit server.lnk"))
 $s.TargetPath = $pyw; $s.Arguments = "server.py"; $s.WorkingDirectory = $DA; $s.WindowStyle = 7; $s.Save()
 $desk = [Environment]::GetFolderPath("Desktop")
 $u = $ws.CreateShortcut((Join-Path $desk "Support Audit.lnk"))
-$u.TargetPath = Join-Path $DA "Support Audit (Windows).bat"; $u.WorkingDirectory = $DA; $u.WindowStyle = 7; $u.Save()
+$u.TargetPath = "powershell.exe"
+$u.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$DA\deploy\launch.ps1`""
+$u.WorkingDirectory = $DA; $u.WindowStyle = 7; $u.IconLocation = "shell32.dll,21"; $u.Save()
 $f = $ws.CreateShortcut((Join-Path $desk "Support Audit files.lnk"))
 $f.TargetPath = $SA; $f.Save()
 
