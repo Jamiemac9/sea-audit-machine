@@ -88,9 +88,12 @@ def _cmd_prefix(claude: str) -> list[str]:
 def build_runtime(job: dict) -> Path:
     """Fresh copy of the agent folder with this run's details filled in, plus rules that stop
     Claude Code opening anything private (original files, the key, the unredacted reference)."""
-    runtime = HOME / "runtime"
-    if runtime.exists():
-        shutil.rmtree(runtime)
+    # each run gets its own folder: on Windows a folder still open in another run can't be removed
+    base = HOME / "runtime"
+    base.mkdir(parents=True, exist_ok=True)
+    for old in base.iterdir():   # tidy up finished runs; ones still in use are skipped
+        shutil.rmtree(old, ignore_errors=True)
+    runtime = base / f"{re.sub(r'[^A-Za-z0-9_]', '', job.get('label', 'run')) or 'run'}-{os.getpid()}-{int(time.time() * 1000)}"
     (runtime / ".claude" / "skills").mkdir(parents=True)
     shutil.copytree(AGENT_DIR / "tools", runtime / "tools")
     skill_dst = runtime / ".claude" / "skills" / "sea-support-audit"
@@ -127,6 +130,65 @@ def check_job(job: dict, claude: str | None) -> list[str]:
     if not Path(job["template"]).is_file():
         problems.append("Upload the blank Support_Audit_OG.docx first.")
     return problems
+
+
+RUNNING = HOME / "running.json"
+
+
+def _pids() -> list[int]:
+    try:
+        return json.loads(RUNNING.read_text())
+    except Exception:
+        return []
+
+
+def _remember(pid: int):
+    try:
+        RUNNING.write_text(json.dumps(sorted(set(_pids() + [pid]))))
+    except Exception:
+        pass
+
+
+def _forget(pid: int):
+    try:
+        RUNNING.write_text(json.dumps([p for p in _pids() if p != pid]))
+    except Exception:
+        pass
+
+
+def kill_tree(pid: int):
+    """Stop a run and everything it started (Claude Code and the tools it is running)."""
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, **NO_WINDOW)
+        else:
+            os.kill(pid, 15)
+    except Exception:
+        pass
+
+
+def _is_claude(pid: int) -> bool:
+    """Only ever stop a process that is still Claude Code (a process number can be reused)."""
+    try:
+        if os.name == "nt":
+            out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                                 capture_output=True, text=True, **NO_WINDOW).stdout.lower()
+            return any(n in out for n in ("claude", "node.exe"))
+        return "claude" in Path(f"/proc/{pid}/cmdline").read_bytes().decode(errors="ignore").lower()
+    except Exception:
+        return False
+
+
+def kill_leftovers():
+    """Runs left behind when the app was closed or updated mid-audit would keep files open
+    and clash with new runs. Called once when the app starts."""
+    for pid in _pids():
+        if _is_claude(pid):
+            kill_tree(pid)
+    try:
+        RUNNING.write_text("[]")
+    except Exception:
+        pass
 
 
 class Run:
@@ -173,6 +235,7 @@ class Run:
         self.proc = subprocess.Popen(self.command(claude, runtime), cwd=runtime, env=env,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                      text=True, encoding="utf-8", errors="replace", bufsize=1, **NO_WINDOW)
+        _remember(self.proc.pid)
         idle = float(self.settings.get("idle_minutes") or 45) * 60
         threading.Thread(target=self._watch, args=(idle,), daemon=True).start()
         for raw in self.proc.stdout:
@@ -180,6 +243,7 @@ class Run:
             log.write(raw)
             self._handle(raw.strip())
         self.proc.wait()
+        _forget(self.proc.pid)
         log.close()
         self.ok = self.proc.returncode == 0 and Path(self.job["output"]).exists()
         if self.ok:
@@ -207,7 +271,7 @@ class Run:
 
     def stop(self):
         if self.proc and self.proc.poll() is None:
-            self.proc.terminate()
+            kill_tree(self.proc.pid)
 
     def _handle(self, raw: str):
         if not raw:
