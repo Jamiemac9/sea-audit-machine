@@ -214,11 +214,11 @@ def _describe_tool(block: dict) -> str:
     name, inp = block.get("name", ""), block.get("input", {}) or {}
     if name == "Bash":
         cmd = inp.get("command", "")
-        for tool in ("read_pack", "inspect_template", "crop", "fill.py", "finish"):
+        for tool in ("score.py", "read_pack", "inspect_template", "crop", "fill.py", "finish"):
             if tool in cmd:
-                return {"read_pack": "Reading documents", "inspect_template": "Mapping the form",
-                        "crop": "Cutting a screenshot", "fill.py": "Filling the form",
-                        "finish": "Checking the finished form"}[tool]
+                return {"score.py": "Scoring the file", "read_pack": "Reading documents",
+                        "inspect_template": "Mapping the form", "crop": "Cutting a screenshot",
+                        "fill.py": "Filling the form", "finish": "Checking the finished form"}[tool]
         return "Running: " + cmd[:90]
     if name == "Read":
         return "Reading " + Path(inp.get("file_path", "")).name

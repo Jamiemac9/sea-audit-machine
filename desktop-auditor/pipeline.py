@@ -108,6 +108,25 @@ def log(bid: str, label: str, line: str):
         f.write(line.rstrip("\n") + "\n")
 
 
+STAGES = [("Loading the audit skill", "Reading the instructions"), ("Reading documents", "Reading the file"),
+          ("Mapping the form", "Working out the findings"), ("Cutting a screenshot", "Cutting screenshots"),
+          ("Filling the form", "Filling in the form"), ("Scoring the file", "Scoring"),
+          ("Checking the finished form", "Checking every page"), ("Real details put back", "Putting names back")]
+
+
+def activity(bid: str, label: str) -> dict:
+    """How far a running audit has got, read from its progress log (for the dashboard)."""
+    lines = read_log(bid, label)
+    if "--- Retry ---" in "\n".join(lines):
+        lines = lines[max(i for i, l in enumerate(lines) if "--- Retry ---" in l):]
+    reached = -1
+    for line in lines:
+        for i, (marker, _) in enumerate(STAGES):
+            if marker in line and i > reached:
+                reached = i
+    return {"step": reached + 1, "of": len(STAGES), "doing": STAGES[reached][1] if reached >= 0 else "Starting"}
+
+
 def read_log(bid: str, label: str) -> list[str]:
     p = bdir(bid) / "private" / f"log-{label or 'round'}.txt"
     return p.read_text(encoding="utf-8").splitlines() if p.exists() else []

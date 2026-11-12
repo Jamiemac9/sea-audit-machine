@@ -4,379 +4,653 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Support Audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 <style>
-  :root { --ink:#1d2433; --muted:#667085; --line:#e4e7ec; --bg:#f7f8fa; --accent:#2f5d50; --warn:#b42318; --amber:#b54708; }
+  :root {
+    --ink:#1E2B45; --ink-2:#4A5874; --ink-3:#7B879C;
+    --paper:#FAFBFD; --mist:#EEF2F8; --card:#FFFFFF; --line:#D5DCE8; --line-2:#E6EBF3;
+    --act:#1E3F6E; --act-hover:#163257;
+    --mark:#F5E15A; --mark-soft:#FCF6C9;
+    --gold:#B8902B; --green:#2E8B57; --amber:#D07A22; --red:#BF3B2B;
+    --gold-bg:#F6EED7; --green-bg:#E2F2E8; --amber-bg:#FBEBDA; --red-bg:#F8E1DD;
+    --r-s:6px; --r-m:10px; --r-l:16px;
+    --font: "Atkinson Hyperlegible", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
   * { box-sizing: border-box; }
-  body { margin:0; font:15px/1.5 -apple-system, "Segoe UI", Aptos, Roboto, sans-serif; color:var(--ink); background:var(--bg); }
-  header { padding:14px 24px; background:#fff; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
-  h1 { font-size:20px; margin:0; }
-  .chips span { font-size:12px; margin-left:8px; padding:3px 9px; border-radius:20px; background:#eef2f6; white-space:nowrap; }
-  .chips .on { background:#dff3ea; color:#14532d; } .chips .off { background:#fde7e4; color:var(--warn); }
-  main { max-width:1180px; margin:0 auto; padding:20px; display:grid; grid-template-columns: 1fr 1fr; gap:20px; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
-  section { background:#fff; border:1px solid var(--line); border-radius:10px; padding:18px; }
-  h2 { font-size:16px; margin:0 0 8px; } h3 { font-size:14px; margin:16px 0 6px; }
-  .muted { color:var(--muted); font-size:13px; }
-  .ok { color:var(--accent); font-weight:600; } .bad { color:var(--warn); font-weight:600; }
-  label { display:block; margin:10px 0 4px; font-size:13px; font-weight:600; }
-  label.inline { display:flex; gap:8px; align-items:center; font-weight:500; }
-  input[type=text], textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font:inherit; }
-  textarea { min-height:56px; }
+  html, body { margin:0; height:100%; }
+  body { font: 15px/1.55 var(--font); color:var(--ink); background:var(--paper); font-variant-numeric: tabular-nums; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: var(--act); }
+  :focus-visible { outline: 3px solid var(--mark); outline-offset: 2px; border-radius: 4px; }
+
+  .app { display:grid; grid-template-columns: 236px 1fr; min-height:100vh; }
+  .rail { background:var(--ink); color:#E9EEF7; padding:22px 16px; display:flex; flex-direction:column; gap:22px; position:sticky; top:0; height:100vh; }
+  .brand { font-weight:700; font-size:19px; padding:0 8px; }
+  .brand small { display:block; font-weight:400; font-size:13px; color:#AEB9CC; }
+  .nav { display:flex; flex-direction:column; gap:4px; }
+  .nav a { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-radius:var(--r-m); color:#DCE3EF; text-decoration:none; }
+  .nav a:hover { background:rgba(255,255,255,.07); }
+  .nav a.on { background:#fff; color:var(--ink); font-weight:700; }
+  .nav .count { background:var(--mark); color:var(--ink); font-weight:700; font-size:12px; border-radius:20px; padding:1px 8px; }
+  .health { margin-top:auto; display:flex; flex-direction:column; gap:7px; font-size:13px; padding:0 8px; }
+  .health div { display:flex; align-items:center; gap:8px; color:#C9D2E1; }
+  .dot { width:9px; height:9px; border-radius:50%; flex:none; background:#6B7891; }
+  .dot.ok { background:#5CC48A; } .dot.bad { background:#F07A64; } .dot.wait { background:#E9C850; }
+  main { padding:30px 38px 60px; max-width:1240px; width:100%; }
+  @media (max-width: 920px) { .app { grid-template-columns: 1fr; } .rail { position:static; height:auto; flex-direction:row; flex-wrap:wrap; align-items:center; } .nav { flex-direction:row; } .health { margin-top:0; } main { padding:22px 18px 50px; } }
+
+  h1 { font-size:28px; line-height:1.2; margin:0 0 4px; }
+  h2 { font-size:19px; margin:0 0 12px; }
+  h3 { font-size:16px; margin:0 0 8px; }
+  .lede { color:var(--ink-2); margin:0 0 24px; max-width:68ch; }
+  .muted { color:var(--ink-3); font-size:14px; }
+  .bad { color:var(--red); font-weight:700; }
+  .ok { color:var(--green); font-weight:700; }
+  code.path { background:var(--mist); border:1px solid var(--line-2); padding:1px 6px; border-radius:var(--r-s); font-size:13px; word-break:break-all; user-select:all; font-family: var(--font); }
+
+  .btn { display:inline-flex; align-items:center; gap:6px; border:1px solid transparent; border-radius:var(--r-m); padding:9px 16px; cursor:pointer; background:var(--act); color:#fff; font-weight:700; text-decoration:none; transition: background .15s; }
+  .btn:hover { background:var(--act-hover); }
+  .btn.quiet { background:var(--card); color:var(--ink); border-color:var(--line); font-weight:400; }
+  .btn.quiet:hover { background:var(--mist); }
+  .btn.mark { background:var(--mark); color:var(--ink); }
+  .btn.mark:hover { background:#EDD540; }
+  .btn.danger { background:var(--card); color:var(--red); border-color:#EBC4BD; font-weight:400; }
+  .btn.small { padding:5px 11px; font-size:14px; border-radius:var(--r-s); }
+  .btn:disabled { opacity:.45; cursor:default; }
   .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  button, .btn { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:8px 14px; font:inherit; cursor:pointer; text-decoration:none; display:inline-block; }
-  button.light, .btn.light { background:#eef2f1; color:var(--ink); }
-  button.danger { background:#fff; color:var(--warn); border:1px solid #f1c7c3; }
-  button.small, .btn.small { padding:4px 10px; font-size:13px; }
-  button:disabled { opacity:.5; cursor:default; }
-  .drop { border:2px dashed #c6cdd6; border-radius:10px; padding:24px; text-align:center; color:var(--muted); cursor:pointer; margin-top:6px; }
-  .drop.over { border-color:var(--accent); background:#f1f6f4; }
-  ul.files { list-style:none; padding:0; margin:6px 0; max-height:150px; overflow:auto; font-size:13px; }
-  ul.files li { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid #f2f4f7; }
-  .full { grid-column: 1 / -1; }
-  .round { border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin:8px 0; cursor:pointer; }
-  .round.sel { border-color:var(--accent); background:#f7fbf9; }
-  .pill { font-size:12px; padding:2px 8px; border-radius:20px; background:#eef2f6; margin-right:4px; }
-  .pill.running, .pill.redacting, .pill.queued { background:#fff4d6; } .pill.done { background:#dff3ea; }
-  .pill.failed, .pill.stopped, .pill.blocked { background:#fde7e4; } .pill.check { background:#e0ecff; }
-  .Gold { color:#a16207; } .Green { color:#15803d; } .Amber { color:var(--amber); } .Red { color:var(--warn); }
-  .box { border:1px solid var(--line); border-radius:8px; padding:12px; margin-top:10px; }
-  .box.warn { border-color:#f1c7c3; background:#fff8f7; } .box.good { border-color:#bfe3d0; background:#f6fbf8; } .box.info { border-color:#c9dbfb; background:#f6f9ff; }
-  code.path { background:#f2f4f7; padding:1px 5px; border-radius:4px; font-size:12px; word-break:break-all; user-select:all; }
-  .viewer { display:grid; grid-template-columns: 260px 1fr; gap:12px; margin-top:8px; }
+  label.field { display:block; font-weight:700; font-size:14px; margin:14px 0 5px; }
+  input[type=text], textarea, select { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:var(--r-m); background:var(--card); }
+  textarea { min-height:64px; resize:vertical; }
+  .check { display:flex; gap:9px; align-items:center; margin-top:12px; }
+  .check input { width:18px; height:18px; accent-color: var(--act); }
+
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:var(--r-l); padding:22px; }
+  .panel + .panel, .stack > * + * { margin-top:18px; }
+  .split > .panel { margin-top:0; }
+  .split { display:grid; grid-template-columns: 1.15fr 1fr; gap:18px; align-items:start; }
+  @media (max-width: 1080px) { .split { grid-template-columns: 1fr; } }
+
+  .needs { background:var(--mark-soft); border:1px solid #EADB7A; border-radius:var(--r-l); padding:18px 20px; }
+  .needs h2 span { background:var(--mark); padding:0 8px; border-radius:4px; }
+  .needs ul { list-style:none; margin:0; padding:0; }
+  .needs li { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 0; border-top:1px solid #EFE3A0; }
+  .needs li:first-child { border-top:0; }
+  .needs.clear { background:var(--card); border-color:var(--line); }
+
+  .stats { display:grid; grid-template-columns: repeat(4, 1fr); gap:18px; margin:22px 0; }
+  @media (max-width: 1080px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:var(--r-l); padding:16px 18px; }
+  .stat b { display:block; font-size:30px; line-height:1.1; }
+  .stat span { color:var(--ink-2); font-size:14px; }
+  .bandbar { display:flex; height:12px; border-radius:6px; overflow:hidden; background:var(--mist); margin:10px 0 8px; }
+  .bandbar i { display:block; height:100%; transition: width .5s ease; }
+  .legend { display:flex; gap:12px; flex-wrap:wrap; font-size:13px; color:var(--ink-2); }
+  .legend span::before { content:""; display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; background:var(--c); }
+
+  .track { display:grid; grid-template-columns: repeat(5, 1fr); position:relative; margin:6px 0 2px; }
+  .track::before { content:""; position:absolute; left:10%; right:10%; top:13px; height:3px; background:var(--line); border-radius:2px; }
+  .track .fill { position:absolute; left:10%; top:13px; height:3px; background:var(--act); border-radius:2px; transition: width .6s ease; }
+  .stop { position:relative; text-align:center; font-size:13px; color:var(--ink-3); }
+  .stop .pin { width:29px; height:29px; margin:0 auto 6px; border-radius:50%; background:var(--card); border:3px solid var(--line); display:grid; place-items:center; font-weight:700; font-size:13px; color:var(--ink-2); position:relative; z-index:1; transition: all .3s; }
+  .stop.past .pin { background:var(--act); border-color:var(--act); color:#fff; }
+  .stop.now .pin { border-color:var(--act); color:var(--act); box-shadow:0 0 0 5px rgba(30,63,110,.12); }
+  .stop.you .pin { background:var(--mark); border-color:#D9C23A; color:var(--ink); box-shadow:0 0 0 5px rgba(245,225,90,.35); }
+  .stop.err .pin { border-color:var(--red); color:var(--red); }
+  .stop.past, .stop.now, .stop.you { color:var(--ink); }
+  .stop .n { display:block; font-size:12px; color:var(--ink-3); }
+  @media (prefers-reduced-motion: no-preference) { .stop.now .pin { animation: pulse 1.8s ease-in-out infinite; } }
+  @keyframes pulse { 50% { box-shadow:0 0 0 9px rgba(30,63,110,.06); } }
+
+  .mini { display:flex; gap:3px; width:150px; }
+  .mini i { flex:1; height:6px; border-radius:3px; background:var(--line-2); transition: background .3s; }
+  .mini i.past { background:var(--act); } .mini i.now { background:#7E9BC4; } .mini i.you { background:var(--mark); } .mini i.err { background:var(--red); }
+
+  .round { display:grid; grid-template-columns: 1.3fr 2fr auto; gap:18px; align-items:center; padding:16px 18px; border:1px solid var(--line); border-radius:var(--r-l); background:var(--card); text-decoration:none; color:inherit; transition: border-color .15s; }
+  .round:hover { border-color:#A9B6CB; }
+  .round + .round { margin-top:10px; }
+  .round .title { font-weight:700; font-size:16px; }
+  @media (max-width: 860px) { .round { grid-template-columns: 1fr; } }
+  .progress { height:8px; border-radius:4px; background:var(--mist); overflow:hidden; margin-top:6px; }
+  .progress i { display:block; height:100%; background:var(--act); transition: width .6s ease; }
+  .dots { display:flex; gap:5px; flex-wrap:wrap; justify-content:flex-end; max-width:220px; }
+  .dots i { width:12px; height:12px; border-radius:3px; background:var(--line-2); }
+  .dots i.you { background:var(--mark); } .dots i.now { background:#7E9BC4; } .dots i.err { outline:2px solid var(--red); outline-offset:-2px; }
+  .empty { text-align:center; padding:40px 20px; color:var(--ink-2); border:1px dashed var(--line); border-radius:var(--r-l); background:var(--card); }
+
+  .band { display:inline-block; padding:2px 10px; border-radius:20px; font-weight:700; font-size:13px; }
+  .band.Gold { background:var(--gold-bg); color:#7A5D12; } .band.Green { background:var(--green-bg); color:#1F6B41; }
+  .band.Amber { background:var(--amber-bg); color:#8F4E0E; } .band.Red { background:var(--red-bg); color:#8E2416; }
+  .c-Gold { background:var(--gold) !important; } .c-Green { background:var(--green) !important; } .c-Amber { background:var(--amber) !important; } .c-Red { background:var(--red) !important; }
+  .score { display:flex; align-items:center; gap:8px; font-size:14px; }
+  .score .bar { width:70px; height:6px; border-radius:3px; background:var(--mist); overflow:hidden; }
+  .score .bar i { display:block; height:100%; }
+
+  .res { list-style:none; margin:0; padding:0; }
+  .res > li { border-top:1px solid var(--line-2); padding:14px 0; }
+  .res > li:first-child { border-top:0; }
+  .res .line { display:grid; grid-template-columns: 1.4fr 160px 1.3fr 170px; gap:16px; align-items:center; }
+  @media (max-width: 980px) { .res .line { grid-template-columns: 1fr 1fr; } }
+  .res .who b { display:block; }
+  .res .acts { margin-top:10px; }
+  .result { white-space:pre-wrap; background:var(--mist); border-radius:var(--r-m); padding:12px 14px; font-size:14px; margin-top:10px; }
+  pre.log { white-space:pre-wrap; background:#172238; color:#D5DEEC; padding:12px 14px; border-radius:var(--r-m); max-height:280px; overflow:auto; font: 13px/1.5 Consolas, "SF Mono", monospace; margin:10px 0 0; }
+
+  .yourcheck { border:2px solid #E3CF55; background:linear-gradient(var(--mark-soft), #fff 160px); }
+  .facts { display:flex; gap:10px; flex-wrap:wrap; margin:10px 0; }
+  .facts span { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:3px 11px; font-size:14px; }
+  .viewer { display:grid; grid-template-columns: 250px 1fr; gap:14px; margin-top:12px; }
   @media (max-width: 900px) { .viewer { grid-template-columns: 1fr; } }
-  .viewer ul { list-style:none; padding:0; margin:0; max-height:520px; overflow:auto; font-size:13px; }
-  .viewer li { padding:4px 6px; border-radius:4px; cursor:pointer; word-break:break-all; } .viewer li.sel { background:#e6f0ec; }
-  .viewer img { max-width:100%; border:1px solid var(--line); }
-  .viewer pre.txt { white-space:pre-wrap; max-height:520px; overflow:auto; background:#fafafa; padding:10px; border:1px solid var(--line); font-size:12px; }
-  table.res { width:100%; border-collapse:collapse; font-size:14px; margin-top:8px; }
-  table.res td, table.res th { padding:7px 6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
-  pre.log { white-space:pre-wrap; background:#0f1720; color:#d6e2ef; padding:12px; border-radius:8px; max-height:300px; overflow:auto; font-size:12.5px; }
-  .result { white-space:pre-wrap; background:#f7faf9; border:1px solid var(--line); padding:10px; border-radius:8px; font-size:14px; }
+  .viewer ul { list-style:none; margin:0; padding:0; max-height:560px; overflow:auto; border:1px solid var(--line); border-radius:var(--r-m); background:var(--card); }
+  .viewer li { padding:7px 10px; cursor:pointer; font-size:13px; word-break:break-all; border-bottom:1px solid var(--line-2); }
+  .viewer li:hover { background:var(--mist); } .viewer li.sel { background:#E4ECF7; font-weight:700; }
+  .page { border:1px solid var(--line); border-radius:var(--r-m); background:var(--mist); padding:10px; min-height:300px; }
+  .page img { max-width:100%; max-height:72vh; display:block; margin:0 auto; box-shadow:0 1px 3px rgba(30,43,69,.15); background:#fff; }
+  .page pre { white-space:pre-wrap; font-size:13px; margin:0; background:#fff; padding:12px; }
+  .names { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .names label { display:flex; gap:6px; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:20px; padding:3px 10px; font-size:14px; cursor:pointer; }
+
+  .drop { border:2px dashed #A9B6CB; border-radius:var(--r-l); padding:30px; text-align:center; background:var(--card); transition: all .15s; }
+  .drop.over { border-color:var(--act); background:#EEF3FA; }
+  .drop b { font-size:17px; display:block; margin-bottom:4px; }
+  .chosen { margin-top:12px; padding:10px 14px; border-radius:var(--r-m); background:var(--mark-soft); border:1px solid #EADB7A; font-weight:700; display:none; }
+  .or { display:flex; align-items:center; gap:12px; color:var(--ink-3); margin:18px 0; font-size:14px; }
+  .or::before, .or::after { content:""; flex:1; height:1px; background:var(--line); }
+
+  .todo { list-style:none; margin:0; padding:0; }
+  .todo li { display:grid; grid-template-columns: 26px 1fr auto; gap:12px; padding:14px 0; border-top:1px solid var(--line-2); align-items:start; }
+  .todo li:first-child { border-top:0; }
+  .tick { width:22px; height:22px; border-radius:50%; border:2px solid var(--line); display:grid; place-items:center; font-size:13px; font-weight:700; margin-top:1px; }
+  .tick.done { background:var(--green); border-color:var(--green); color:#fff; }
+  .tick.need { border-color:var(--amber); color:var(--amber); }
+  .files { list-style:none; margin:8px 0 0; padding:0; font-size:14px; max-height:180px; overflow:auto; }
+  .files li { display:flex; justify-content:space-between; gap:8px; padding:4px 0; border-top:1px solid var(--line-2); }
+
+  .toast { position:fixed; bottom:22px; right:22px; background:var(--ink); color:#fff; padding:11px 16px; border-radius:var(--r-m); opacity:0; transform:translateY(8px); transition: all .25s; pointer-events:none; max-width:420px; z-index:9; }
+  .toast.show { opacity:1; transform:none; }
+  .hidden { display:none !important; }
+  details summary { list-style-position: inside; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Support Audit</h1>
-  <div class="chips" id="chips"></div>
-</header>
-<main>
-  <section>
-    <h2>1. Blank form</h2>
-    <div id="templateState" class="muted">…</div>
-    <div class="muted">Or put it straight in <code class="path" id="tplPath"></code></div>
-    <input type="file" id="templateFile" accept=".docx" hidden>
-    <button class="light small" style="margin-top:6px" onclick="templateFile.click()">Upload Support_Audit_OG.docx</button>
+<div class="app">
+  <aside class="rail">
+    <div class="brand">Support Audit<small>Form A, scores and feedback</small></div>
+    <nav class="nav">
+      <a href="#/" data-r="home"><span>Dashboard</span><span class="count hidden" id="navNeeds"></span></a>
+      <a href="#/new" data-r="new"><span>New audit</span></a>
+      <a href="#/setup" data-r="setup"><span>Setup</span><span class="count hidden" id="navSetup"></span></a>
+    </nav>
+    <div class="health" id="health"></div>
+  </aside>
+  <main id="main"></main>
+</div>
+<div class="toast" id="toast" role="status"></div>
 
-    <h2 style="margin-top:18px">2. Reference files</h2>
-    <div class="muted">House style, rules, your SKILL.md and your completed audits. Names in them are hidden too before Claude reads them.</div>
-    <div class="muted">Or put them straight in <code class="path" id="refPath"></code> (picked up automatically)</div>
-    <ul class="files" id="refList"></ul>
-    <div id="refNote" class="muted"></div>
-    <input type="file" id="refFiles" multiple hidden>
-    <button class="light small" onclick="refFiles.click()">Add reference files</button>
+<input type="file" id="folderPick" webkitdirectory multiple hidden>
+<input type="file" id="filePick" multiple hidden>
+<input type="file" id="zipPick" accept=".zip" hidden>
+<input type="file" id="templateFile" accept=".docx" hidden>
+<input type="file" id="refFiles" multiple hidden>
 
-    <h2 style="margin-top:18px">Privacy settings</h2>
-    <label for="hideNames">Names to always hide (staff, managers, anyone who comes up a lot), one per line</label>
-    <textarea id="hideNames"></textarea>
-    <label for="outDir">Save finished forms in</label>
-    <input type="text" id="outDir">
-    <label class="inline"><input type="checkbox" id="checkFirst"> Let me check the hidden copy before anything goes to Claude</label>
-    <button class="light small" style="margin-top:8px" onclick="saveSettings()">Save settings</button> <span id="setMsg" class="muted"></span>
-  </section>
-
-  <section>
-    <h2>3. New audit</h2>
-    <label for="localPath">Easiest: paste the resident's folder location</label>
-    <div class="muted">In File Explorer, open the resident's folder, click the address bar at the top, copy (Ctrl+C) and paste it here (Ctrl+V).</div>
-    <div class="row" style="margin-top:4px"><input type="text" id="localPath" placeholder="e.g. C:\Users\you\Desktop\Blue Crescent\Resident Name" style="flex:1"><button class="light small" onclick="useLocal()">Use this folder</button></div>
-    <div class="muted" style="margin-top:8px">Or just copy the folder into <code class="path" id="inboxPath"></code>: it starts by itself, and everything finished goes into a <b>Completed Audits</b> folder inside it.</div>
-    <div id="inboxBox" style="display:none; margin-top:6px"><label>Waiting in your inbox</label><div id="inboxList" class="row"></div></div>
-    <div class="drop" id="drop" style="margin-top:12px">Or drag the folder or its files here</div>
-    <div class="row" style="margin-top:6px">
-      <button class="light small" onclick="folderPick.click()">Choose a folder…</button>
-      <button class="light small" onclick="filePick.click()">Choose files…</button>
-      <button class="light small" onclick="zipPick.click()">Choose a .zip…</button>
-    </div>
-    <div class="muted" style="margin-top:4px">With "Choose a folder", go <b>into</b> the resident's folder and press Upload. Files don't show in that window; that's normal.</div>
-    <input type="file" id="folderPick" webkitdirectory multiple hidden>
-    <input type="file" id="filePick" multiple hidden>
-    <input type="file" id="zipPick" accept=".zip" hidden>
-    <div class="muted" id="picked" style="margin-top:6px; font-weight:600"></div>
-    <label for="several">This folder is</label>
-    <select id="several" style="padding:6px; border:1px solid var(--line); border-radius:6px; font:inherit">
-      <option value="auto">Work it out (a property of residents, or one resident)</option>
-      <option value="one">One resident's file</option>
-      <option value="several">A property: one folder per resident</option>
-    </select>
-    <label for="ma">Managing agent (as on licence)</label>
-    <input type="text" id="ma" placeholder="Leave blank to take it from the licence">
-    <div class="row">
-      <div style="flex:1"><label for="date">Audit date</label><input type="text" id="date"></div>
-      <div style="flex:1; padding-top:22px"><label class="inline"><input type="checkbox" id="followUp"> Follow-up audit</label></div>
-    </div>
-    <label for="extraNames">Other names to hide in these files (optional, one per line)</label>
-    <textarea id="extraNames" placeholder="e.g. family members, the support worker"></textarea>
-    <label for="notes">Notes for this audit (optional; names in here are hidden too)</label>
-    <textarea id="notes"></textarea>
-    <div class="row" style="margin-top:12px">
-      <button id="startBtn" onclick="start()" disabled>Start</button>
-      <span id="startMsg" class="muted"></span>
-    </div>
-  </section>
-
-  <section class="full">
-    <h2>Audits</h2>
-    <div id="rounds"></div>
-    <div id="detail"></div>
-  </section>
-</main>
 <script>
 const $ = id => document.getElementById(id);
-let picked = [], local = null, filesName = '', selected = null, view = {path:null, page:1, pages:1}, logState = {}, openLogs = {}, lastDetail = '';
-$('date').value = new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'2-digit', year:'2-digit'});
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-
 async function api(path, opts={}) {
   const r = await fetch(path, opts);
   if (!r.ok) { let t = await r.text(); try { t = JSON.parse(t).detail } catch(e){}; throw new Error(t) }
-  const ct = r.headers.get('content-type') || '';
-  return ct.includes('json') ? r.json() : r;
+  return (r.headers.get('content-type')||'').includes('json') ? r.json() : r;
 }
 const post = (path, body) => api(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{})});
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 3200) }
+const cache = {};
+// only touch the page where something actually changed, so nothing flickers
+function put(id, html) { const el = $(id); if (!el) return false; if (cache[id] === html) return false; el.innerHTML = html; cache[id] = html; return true }
+const when = iso => { if (!iso) return ''; const d = new Date(iso); return d.toLocaleDateString('en-GB', {day:'numeric', month:'short'}) + ', ' + d.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'}) };
 
-let settingsLoaded = false;
-async function refresh() {
-  const s = await api('/api/state');
-  const t = s.tools;
-  $('chips').innerHTML =
-    (s.login.loggedIn === true ? '<span class="on">Claude: logged in</span>'
-      : s.login.loggedIn === null ? `<span title="${esc(s.login.reason||'')}">Claude: checking…</span>`
-      : '<span class="off">Claude: not logged in</span> <button class="small" onclick="claudeLogin()">Log in to Claude</button>') +
-    `<span class="${t.name_finder?'on':'off'}">Name finder ${t.name_finder?'on':'off'}</span>` +
-    `<span class="${t.ocr?'on':'off'}">Scan reader ${t.ocr?'on':'off'}</span>` +
-    `<span class="${t.office?'on':'off'}">Word converter ${t.office?'on':'off'}</span>`;
-  $('tplPath').textContent = s.folders.template; $('refPath').textContent = s.folders.reference;
-  $('inboxPath').textContent = s.folders.inbox;
-  const waiting = s.inbox.filter(f => !f.picked);
-  $('inboxBox').style.display = waiting.length ? '' : 'none';
-  $('inboxList').innerHTML = waiting.map(f => `<button class="light small" onclick="useInbox('${encodeURIComponent(f.name)}')">${esc(f.name)} (${f.files} files)</button>`).join('');
-  $('templateState').innerHTML = (s.template ? `<span class="ok">✓ Using</span> ${esc(s.template)}`
-      : (s.template_others.length ? '<span class="bad">No Support Audit form found. Name the blank Form A Support_Audit_OG.docx.</span>' : '<span class="bad">Not added yet</span>'))
-    + (s.template_others.length ? `<br><span class="muted">Not used (other forms in that folder): ${s.template_others.map(esc).join(', ')}</span>` : '')
-    + (s.feedback_template ? `<br><span class="ok">✓ Overall Feedback Form:</span> ${esc(s.feedback_template)}`
-                           : '<br><span class="muted">Add the blank Overall Feedback Form here too, and it is written for each round.</span>');
-  $('refList').innerHTML = s.reference.map(n => `<li><span>${esc(n)}</span><button class="light small" onclick="delRef('${encodeURIComponent(n)}')">Remove</button></li>`).join('') || '<li class="muted">Nothing yet</li>';
-  $('refNote').innerHTML = (s.reference_held_back.length ? `<span class="bad">Not given to Claude (could not be hidden safely): ${s.reference_held_back.map(esc).join(', ')}</span>` : '')
-    + (s.reference_leaks ? ' <span class="bad">Some names could not be hidden in the reference files; they are not used.</span>' : '');
-  if (!settingsLoaded) {
-    $('hideNames').value = s.settings.hide_names.join('\n'); $('outDir').value = s.settings.output_dir;
-    $('checkFirst').checked = s.settings.check_before_sending; settingsLoaded = true;
+let S = null, D = null, route = {name:'home'}, view = {path:null, page:1}, openLogs = {}, logPos = {};
+let src = {files:[], local:null, label:''};
+
+// ---------- where each resident is on the track ----------
+const STOPS = ['Hiding names', 'Your check', 'Claude auditing', 'Names back', 'Done'];
+function stopOf(batchStatus, r) {
+  if (batchStatus === 'redacting' || r.status === 'waiting') return {i:0, kind:'now'};
+  if (r.status === 'check') return {i:1, kind:'you'};
+  if (r.status === 'blocked') return {i:1, kind:'err'};
+  if (r.status === 'queued') return {i:2, kind:'wait'};
+  if (r.status === 'running' || r.status === 'stopping') return (r.activity && r.activity.step >= 8) ? {i:3, kind:'now'} : {i:2, kind:'now'};
+  if (r.status === 'done') return {i:4, kind:'past'};
+  return {i:2, kind:'err'};
+}
+const statusWords = r => ({waiting:'Hiding names on this computer', check:'Ready for your check', blocked:'Some details could not be hidden',
+  queued:'Waiting its turn', running: r.activity ? `${r.activity.doing} (${r.activity.step} of ${r.activity.of})` : 'Claude is auditing',
+  stopping:'Stopping', done:'Done', failed:'Did not finish', stopped:'Stopped'}[r.status] || r.status);
+
+function miniTrack(bs, r) {
+  const s = stopOf(bs, r);
+  return `<div class="mini" title="${esc(STOPS[s.i])}">${STOPS.map((_, i) =>
+    `<i class="${i < s.i || s.kind==='past' ? 'past' : i === s.i ? (s.kind==='you' ? 'you' : s.kind==='err' ? 'err' : 'now') : ''}"></i>`).join('')}</div>`;
+}
+function bigTrack(b) {
+  const rs = Object.values(b.residents || {});
+  const counts = [0,0,0,0,0]; let err = false, you = false, low = 4;
+  rs.forEach(r => { const s = stopOf(b.status, r); counts[s.i]++; if (s.kind==='err') err = true; if (s.kind==='you') you = true; low = Math.min(low, s.i) });
+  const allDone = rs.length && rs.every(r => r.status === 'done');
+  const reach = allDone ? 4 : low;
+  return `<div class="track">${STOPS.map((name, i) => {
+      const cls = allDone || i < reach ? 'past' : i === reach ? (you && i===1 ? 'you' : err ? 'err' : 'now') : '';
+      return `<div class="stop ${cls}"><div class="pin">${allDone || i < reach ? '✓' : i+1}</div>${name}<span class="n">${counts[i] ? counts[i] + (counts[i]===1?' resident':' residents') : '&nbsp;'}</span></div>` }).join('')}
+    <div class="fill" style="width:${reach*20}%"></div></div>`;
+}
+const bandPill = r => r.rating ? `<span class="band ${r.rating}">${r.rating}</span>` : '';
+const scoreBar = r => r.total != null ? `<div class="score"><div class="bar"><i class="c-${r.rating||''}" style="width:${Math.min(100, r.total)}%"></i></div>${r.total}/100</div>` : '';
+
+// ---------- what needs you ----------
+function needs(s) {
+  const out = [];
+  if (s.login.loggedIn === false) out.push({t:'Log Claude in on this computer', a:`<button class="btn small" onclick="claudeLogin()">Log in to Claude</button>`});
+  if (!s.template) out.push({t:'Add the blank Support Audit form', a:`<a class="btn quiet small" href="#/setup">Open setup</a>`});
+  for (const b of s.batches) {
+    const name = b.ma || 'Audit round';
+    if (b.status === 'check') out.push({t:`Check what Claude will see: ${esc(name)}, ${b.residents.length} ${b.residents.length===1?'resident':'residents'}`, a:`<a class="btn mark small" href="#/round/${b.id}">Check now</a>`});
+    if (b.status === 'blocked') out.push({t:`Some details could not be hidden in ${esc(name)}`, a:`<a class="btn quiet small" href="#/round/${b.id}">Fix</a>`});
+    for (const r of b.residents) if (r.status === 'failed') out.push({t:`${esc(r.name)}'s audit did not finish`, a:`<a class="btn quiet small" href="#/round/${b.id}">See why</a>`});
+    if (b.feedback === 'failed') out.push({t:`The Overall Feedback Form for ${esc(name)} did not finish`, a:`<a class="btn quiet small" href="#/round/${b.id}">See why</a>`});
   }
-  $('rounds').innerHTML = s.batches.map(b => `<div class="round ${b.id===selected?'sel':''}" onclick="openRound('${b.id}')">
-      <div class="row" style="justify-content:space-between"><strong>${esc(b.ma || 'Audit')} <span class="muted">${b.created.replace('T',' ').slice(0,16)}</span></strong>
-      <span class="pill ${b.status}">${label(b.status)}</span></div>
-      <div style="margin-top:4px">${b.residents.map(r => `<span class="pill ${r.status}">${esc(r.name)}: ${label(r.status)}${r.rating?` · <b class="${r.rating}">${r.rating}</b>`:''}</span>`).join(' ')}</div></div>`).join('')
-    || '<div class="muted">No audits yet</div>';
-  $('startBtn').disabled = !(picked.length || local);
+  return out;
 }
-const label = s => ({check:'ready to check', redacting:'hiding names…', approved:'sent', blocked:'cannot send', queued:'waiting', running:'Claude is auditing', done:'done', failed:'failed', stopped:'stopped', waiting:'waiting', stopping:'stopping'}[s] || s);
+const setupMissing = s => [s.login.loggedIn === false, !s.template, !s.feedback_template, !s.reference.length].filter(Boolean).length;
 
-async function claudeLogin() {
-  try { await post('/api/login') } catch(e) { return alert(e.message) }
-  alert('A window has opened to sign Claude in. A browser page will ask you to log in to your Claude account. When it says you are logged in, close that window. This page turns green within a few seconds.');
+function renderRail() {
+  const s = S, t = s.tools, li = s.login.loggedIn;
+  put('health', `
+    <div><i class="dot ${li===true?'ok':li===null?'wait':'bad'}"></i>Claude ${li===true?'logged in':li===null?'checking':'not logged in'}</div>
+    <div><i class="dot ${t.name_finder?'ok':'bad'}"></i>Name finder ${t.name_finder?'on':'off'}</div>
+    <div><i class="dot ${t.ocr?'ok':'bad'}"></i>Scan reader ${t.ocr?'on':'off'}</div>
+    <div><i class="dot ${t.office?'ok':'bad'}"></i>Word converter ${t.office?'on':'off'}</div>
+    ${li===false ? `<button class="btn mark small" onclick="claudeLogin()">Log in to Claude</button>` : ''}`);
+  const n = needs(s).length, m = setupMissing(s);
+  $('navNeeds').textContent = n; $('navNeeds').classList.toggle('hidden', !n);
+  $('navSetup').textContent = m; $('navSetup').classList.toggle('hidden', !m);
+  document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('on', a.dataset.r === (route.name === 'round' ? 'home' : route.name)));
 }
-async function saveSettings() {
-  await post('/api/settings', {hide_names: $('hideNames').value.split('\n'), output_dir: $('outDir').value, check_before_sending: $('checkFirst').checked});
-  $('setMsg').textContent = 'Saved'; setTimeout(() => $('setMsg').textContent = '', 2000);
-}
-$('templateFile').onchange = async e => { const fd = new FormData(); fd.append('file', e.target.files[0]);
-  try { await api('/api/template', {method:'POST', body:fd}) } catch(err) { alert(err.message) } e.target.value=''; refresh() };
-$('refFiles').onchange = async e => { const fd = new FormData(); for (const f of e.target.files) fd.append('files', f);
-  await api('/api/reference', {method:'POST', body:fd}); e.target.value=''; refresh() };
-async function delRef(n) { await api('/api/reference/'+n, {method:'DELETE'}); refresh() }
 
-// ---- choosing a folder ----
-$('drop').onclick = () => $('folderPick').click();
-$('folderPick').onchange = e => { filesName=''; setPicked([...e.target.files].map(f => ({file:f, path:f.webkitRelativePath || f.name}))) };
-$('zipPick').onchange = e => { filesName=''; setPicked([...e.target.files].map(f => ({file:f, path:f.name}))) };
+// ---------- dashboard ----------
+function renderHome() {
+  const s = S;
+  const all = s.batches.flatMap(b => b.residents.map(r => ({...r, b})));
+  const done = all.filter(r => r.status === 'done');
+  const scored = done.filter(r => r.total != null);
+  const avg = scored.length ? (scored.reduce((a, r) => a + r.total, 0) / scored.length).toFixed(1) : 'None yet';
+  const active = all.filter(r => ['waiting','check','queued','running','stopping'].includes(r.status)).length;
+  const bands = ['Gold','Green','Amber','Red'].map(k => [k, done.filter(r => r.rating === k).length]);
+  const nd = needs(s);
+  const needsHtml = nd.length
+    ? `<div class="needs"><h2><span>Needs you</span></h2><ul>${nd.map(x => `<li><span>${x.t}</span>${x.a}</li>`).join('')}</ul></div>`
+    : `<div class="needs clear"><h2>Nothing needs you right now</h2><div class="muted">Rounds show up here when they are ready for your check.</div></div>`;
+  const rounds = s.batches.length ? s.batches.map(b => {
+      const rs = b.residents, d = rs.filter(r => r.status === 'done').length;
+      const steps = rs.reduce((a, r) => a + stopOf(b.status, r).i + (r.status === 'done' ? 1 : 0), 0);
+      const pct = rs.length ? Math.round(steps / (rs.length * 5) * 100) : 0;
+      const lead = b.status === 'redacting' ? 'Hiding names on this computer' : b.status === 'check' ? 'Ready for your check'
+        : b.status === 'blocked' ? 'Some details could not be hidden'
+        : d === rs.length ? (b.feedback === 'done' ? 'Complete' : b.feedback === 'running' ? 'Writing the Overall Feedback Form' : 'Every resident done')
+        : `${d} of ${rs.length} residents done`;
+      return `<a class="round" href="#/round/${b.id}">
+        <div><div class="title">${esc(b.ma || 'Audit round')}</div><div class="muted">Started ${when(b.created)}</div></div>
+        <div><div class="row" style="justify-content:space-between"><span>${lead}</span><span class="muted">${pct}%</span></div><div class="progress"><i style="width:${pct}%"></i></div></div>
+        <div class="dots" title="One square per resident">${rs.map(r => { const k = stopOf(b.status, r).kind;
+          return `<i class="${r.rating ? 'c-'+r.rating : k==='you' ? 'you' : k==='err' ? 'err' : k==='now' ? 'now' : ''}" title="${esc(r.name)}"></i>` }).join('')}</div>
+      </a>`}).join('')
+    : `<div class="empty"><h3>No audits yet</h3><p>Start one from a resident's folder or a whole property.</p><a class="btn" href="#/new">Start an audit</a></div>`;
+  put('main', `
+    <h1>Dashboard</h1>
+    <p class="lede">Where every round and resident is, and what is waiting for you.</p>
+    ${needsHtml}
+    <div class="stats">
+      <div class="stat"><b>${active}</b><span>residents in progress</span></div>
+      <div class="stat"><b>${done.length}</b><span>residents audited</span></div>
+      <div class="stat"><b>${avg}</b><span>average score out of 100</span></div>
+      <div class="stat"><span>Bands so far</span>
+        <div class="bandbar">${done.length ? bands.map(([k, n]) => `<i class="c-${k}" style="width:${n/done.length*100}%"></i>`).join('') : ''}</div>
+        <div class="legend">${bands.map(([k, n]) => `<span style="--c:var(--${k.toLowerCase()})">${k} ${n}</span>`).join('')}</div></div>
+    </div>
+    <div class="row" style="justify-content:space-between; margin-bottom:12px"><h2 style="margin:0">Rounds</h2><a class="btn" href="#/new">Start an audit</a></div>
+    ${rounds}`);
+}
+
+// ---------- new audit ----------
+function renderNew() {
+  if (!$('newView')) {
+    $('main').innerHTML = `<div id="newView">
+      <h1>Start an audit</h1>
+      <p class="lede">Give it a resident's folder, or a property folder with one folder per resident. Names are hidden on this computer before anything goes to Claude, and everything finished goes into a Completed Audits folder inside the folder you gave it.</p>
+      <div class="split">
+        <div class="panel">
+          <h2>Which files</h2>
+          <label class="field" for="localPath">Paste the folder's location</label>
+          <div class="muted" style="margin-bottom:6px">In File Explorer, open the folder, click the address bar, copy it and paste it here.</div>
+          <div class="row"><input type="text" id="localPath" placeholder="C:\\Users\\you\\Desktop\\Property name" style="flex:1"><button class="btn quiet" onclick="useLocal()">Use this folder</button></div>
+          <div class="or">or</div>
+          <div class="drop" id="drop"><b>Drag the folder or its files here</b><span class="muted">or choose them</span>
+            <div class="row" style="justify-content:center; margin-top:12px">
+              <button class="btn quiet small" onclick="folderPick.click()">Choose a folder</button>
+              <button class="btn quiet small" onclick="filePick.click()">Choose files</button>
+              <button class="btn quiet small" onclick="zipPick.click()">Choose a .zip</button></div>
+            <div class="muted" style="margin-top:8px">With "Choose a folder", go into the folder and press Upload. The files don't show in that window, which is normal.</div>
+          </div>
+          <div class="chosen" id="chosen"></div>
+          <div class="or">or</div>
+          <div>Copy the folder into <code class="path" id="inboxPath"></code> and it starts by itself.</div>
+          <div id="inboxBox"></div>
+        </div>
+        <div class="panel">
+          <h2>About this audit</h2>
+          <label class="field" for="ma">Managing agent, as on the licence</label>
+          <input type="text" id="ma" placeholder="Leave blank to take it from the licence">
+          <div class="row" style="align-items:end">
+            <div style="flex:1"><label class="field" for="date">Audit date</label><input type="text" id="date"></div>
+            <label class="check" style="flex:1; margin-bottom:9px"><input type="checkbox" id="followUp"> Follow-up audit</label>
+          </div>
+          <label class="field" for="several">This folder is</label>
+          <select id="several">
+            <option value="auto">Worked out for me</option>
+            <option value="one">One resident's file</option>
+            <option value="several">A property, one folder per resident</option>
+          </select>
+          <label class="field" for="extraNames">Other names to hide in these files</label>
+          <textarea id="extraNames" placeholder="One per line, for example family members or the support worker"></textarea>
+          <label class="field" for="notes">Notes for this audit</label>
+          <textarea id="notes" placeholder="Anything Claude should know. Names in here are hidden too."></textarea>
+          <div class="row" style="margin-top:18px"><button class="btn" id="startBtn" onclick="start()" disabled>Start the audit</button><span class="muted" id="startMsg"></span></div>
+        </div>
+      </div></div>`;
+    $('date').value = new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'2-digit', year:'2-digit'});
+    wireDrop(); showChosen();
+  }
+  $('inboxPath').textContent = S.folders.inbox;
+  const waiting = S.inbox.filter(f => !f.picked);
+  put('inboxBox', waiting.length ? `<div class="muted" style="margin-top:8px">Waiting there now:</div><div class="row" style="margin-top:6px">${waiting.map(f =>
+    `<button class="btn quiet small" onclick="useInbox('${encodeURIComponent(f.name)}')">${esc(f.name)} (${f.files} files)</button>`).join('')}</div>` : '');
+}
+function showChosen() {
+  const el = $('chosen'); if (!el) return;
+  el.style.display = src.label ? 'block' : 'none';
+  el.textContent = src.label ? `Ready: ${src.label}` : '';
+  $('startBtn').disabled = !(src.files.length || src.local);
+}
+function wireDrop() {
+  const d = $('drop');
+  d.ondragover = e => { e.preventDefault(); d.classList.add('over') };
+  d.ondragleave = () => d.classList.remove('over');
+  d.ondrop = async e => {
+    e.preventDefault(); d.classList.remove('over');
+    const out = [];
+    const walk = (entry, prefix) => new Promise(res => {
+      if (entry.isFile) entry.file(f => { out.push({file:f, path: prefix + f.name}); res() });
+      else { const rd = entry.createReader(), all = [];
+        const more = () => rd.readEntries(async es => { if (!es.length) { for (const c of all) await walk(c, prefix + entry.name + '/'); res() } else { all.push(...es); more() } });
+        more() }
+    });
+    for (const it of e.dataTransfer.items) { const en = it.webkitGetAsEntry && it.webkitGetAsEntry(); if (en) await walk(en, '') }
+    setFiles(out, '');
+  };
+}
+function setFiles(list, name) {
+  const files = list.filter(p => !p.path.split('/').pop().startsWith('.'));
+  const top = name || (files[0] ? files[0].path.split('/')[0] : '');
+  src = {files, local:null, label: files.length ? `${top} (${files.length} files)` : '', name};
+  showChosen();
+}
+$('folderPick').onchange = e => { setFiles([...e.target.files].map(f => ({file:f, path:f.webkitRelativePath || f.name})), ''); e.target.value='' };
+$('zipPick').onchange = e => { setFiles([...e.target.files].map(f => ({file:f, path:f.name})), ''); e.target.value='' };
 $('filePick').onchange = e => {
-  const list = [...e.target.files];
+  const list = [...e.target.files]; e.target.value = '';
   if (!list.length) return;
-  filesName = prompt("Resident's name (used for the finished form's name):", '') || 'Resident';
-  setPicked(list.map(f => ({file:f, path:f.name})));
+  const n = prompt("Whose files are these? This names the finished form.", '') || 'Resident';
+  setFiles(list.map(f => ({file:f, path:f.name})), n);
 };
 function useLocal() {
   const v = $('localPath').value.trim().replace(/^"|"$/g, '');
-  if (!v) return alert("Paste the folder's location first.");
-  picked = []; local = {path: v};
-  $('picked').textContent = `Ready: ${v.split(/[\\/]/).filter(Boolean).pop()} (from this computer)`; refresh();
+  if (!v) return toast("Paste the folder's location first.");
+  src = {files:[], local:{path:v}, label: `${v.split(/[\\/]/).filter(Boolean).pop()}, from this computer`}; showChosen();
 }
-function useInbox(n) {
-  picked = []; local = {inbox: decodeURIComponent(n)};
-  $('picked').textContent = `Ready: ${decodeURIComponent(n)} (from your inbox folder)`; refresh();
-}
-$('drop').ondragover = e => { e.preventDefault(); $('drop').classList.add('over') };
-$('drop').ondragleave = () => $('drop').classList.remove('over');
-$('drop').ondrop = async e => {
-  e.preventDefault(); $('drop').classList.remove('over');
-  const out = [];
-  const walk = (entry, prefix) => new Promise(res => {
-    if (entry.isFile) entry.file(f => { out.push({file:f, path: prefix + f.name}); res() });
-    else { const rd = entry.createReader(); const all = [];
-      const more = () => rd.readEntries(async es => { if (!es.length) { for (const c of all) await walk(c, prefix + entry.name + '/'); res() } else { all.push(...es); more() } });
-      more() }
-  });
-  for (const it of e.dataTransfer.items) { const en = it.webkitGetAsEntry && it.webkitGetAsEntry(); if (en) await walk(en, '') }
-  setPicked(out);
-};
-function setPicked(list) {
-  local = null;
-  picked = list.filter(p => !p.path.split('/').pop().startsWith('.'));
-  const top = filesName || picked[0]?.path.split('/')[0] || '';
-  $('picked').textContent = picked.length ? `Ready: ${top} (${picked.length} files)` : '';
-  refresh();
-}
+function useInbox(n) { const name = decodeURIComponent(n); src = {files:[], local:{inbox:name}, label:`${name}, from your inbox`}; showChosen() }
 async function start() {
-  if (local) {
-    $('startBtn').disabled = true; $('startMsg').textContent = 'Copying the folder…';
-    try {
-      const r = await post('/api/batches/from-folder', {...local, ma:$('ma').value, date:$('date').value, notes:$('notes').value,
-        extra_names:$('extraNames').value, follow_up:$('followUp').checked, several:$('several').value});
-      $('startMsg').textContent = 'Hiding names on this computer…';
-      local = null; $('localPath').value=''; $('picked').textContent=''; $('notes').value=''; $('extraNames').value='';
-      openRound(r.id);
-    } catch(err) { $('startMsg').textContent=''; alert(err.message) }
-    return refresh();
-  }
-  const fd = new FormData();
-  if (filesName) fd.append('folder_name', filesName);
-  for (const p of picked) fd.append('files', p.file, p.path);
-  for (const k of ['ma','date','notes']) fd.append(k, $(k).value);
-  fd.append('extra_names', $('extraNames').value); fd.append('follow_up', $('followUp').checked); fd.append('several', $('several').value);
-  $('startBtn').disabled = true; $('startMsg').textContent = 'Copying files…';
+  const common = {ma:$('ma').value, date:$('date').value, notes:$('notes').value, extra_names:$('extraNames').value,
+                  follow_up:$('followUp').checked, several:$('several').value};
+  $('startBtn').disabled = true; $('startMsg').textContent = src.local ? 'Copying the folder' : 'Copying the files';
   try {
-    const r = await api('/api/batches', {method:'POST', body:fd});
-    $('startMsg').textContent = 'Hiding names on this computer…';
-    picked = []; $('picked').textContent = ''; $('notes').value = ''; $('extraNames').value = '';
-    openRound(r.id);
-  } catch(err) { $('startMsg').textContent = ''; alert(err.message) }
-  refresh();
-}
-
-// ---- one round ----
-async function openRound(id) { if (selected !== id) { view = {path:null,page:1,pages:1}; logState = {}; openLogs = {} } selected = id; await drawRound(); refresh() }
-
-async function drawRound() {
-  if (!selected) { $('detail').innerHTML=''; return }
-  let b; try { b = await api('/api/batches/' + selected) } catch(e) { selected=null; $('detail').innerHTML=''; return }
-  const sig = JSON.stringify([b.status, b.report && b.report.counts, b.preview.length, Object.values(b.residents).map(r => [r.status, r.rating, r.has_final, r.total]), b.feedback, b.scorebook_name, openLogs]);
-  if (sig === lastDetail) { await pollLogs(b); return }
-  lastDetail = sig;
-  const rep = b.report;
-  let h = `<div class="box info">Finished forms are saved in <code class="path">${esc(b.out_dir)}</code>
-    <button class="light small" onclick="openOut('folder')">Open that folder</button></div>`;
-  if (b.status === 'redacting') h += `<div class="box info">Hiding names and details on this computer. Nothing has been sent anywhere.</div>`;
-  if (b.error) h += `<div class="box warn">${esc(b.error)}</div>`;
-  if (rep) {
-    const c = rep.counts || {};
-    const words = {RESIDENT:'resident',PERSON:'other person',ADDRESS:'address',POSTCODE:'postcode',PHONE:'phone number',EMAIL:'email',DOB:'date of birth',NI_NUMBER:'NI number',NHS_NUMBER:'NHS number',BANK_DETAILS:'bank detail'};
-    const plural = (w, n) => n === 1 ? w : (w === 'other person' ? 'other people' : w === 'address' ? 'addresses' : w === 'date of birth' ? 'dates of birth' : w + 's');
-    const list = Object.entries(c).map(([k,n]) => `${n} ${plural(words[k]||k, n)}`).join(', ');
-    h += `<div class="box ${rep.leaks.length?'warn':'good'}"><strong>Privacy check.</strong> Hidden before anything leaves this computer: ${esc(list || 'nothing found')}.<br>`;
-    h += rep.leaks.length ? `<span class="bad">A hidden detail was still found in ${rep.leaks.length} place(s). This round cannot be sent. Add the names below and press Hide again.</span>`
-                          : `<span class="ok">Every hidden detail was searched for again in the copy: none left.</span>`;
-    if (!rep.ner) h += `<br><span class="bad">The name finder is off, so only resident names and names you listed are hidden.</span>`;
-    h += `</div>`;
-    if (rep.held_back.length) h += `<div class="box warn"><strong>Not sent to Claude</strong> (could not be hidden safely; check these yourself):<br>${rep.held_back.map(f => `${esc(f.file)}: ${esc(f.reason||'')}`).join('<br>')}</div>`;
-    const pn = [...new Set((rep.possible_names||[]).map(p => p.text))];
-    if (pn.length) h += `<div class="box info"><strong>Might still be names.</strong> Tick any that are real names, then press Hide these.<div class="row" style="margin-top:6px">${pn.slice(0,60).map((n,i) => `<label class="inline"><input type="checkbox" class="pn" value="${esc(n)}"> ${esc(n)}</label>`).join('')}</div></div>`;
-    h += `<div class="box"><label for="moreNames">Anything else to hide? One per line</label><textarea id="moreNames"></textarea>
-      <div class="row" style="margin-top:6px"><button class="light small" onclick="redo(false)">Hide these and check again</button><label class="inline"><input type="checkbox" id="always"> Always hide these</label></div></div>`;
-    if (b.preview.length) {
-      h += `<h3>What Claude will see</h3><div class="muted">These are the copies Claude gets. Click through them; real names should only appear as labels like [RESIDENT_A].</div>
-        <div class="viewer"><ul>${b.preview.map(f => `<li class="${f.path===view.path?'sel':''}" onclick="show('${encodeURIComponent(f.path)}')">${esc(f.path)}</li>`).join('')}</ul>
-        <div id="pageView" class="muted">Pick a file on the left.</div></div>`;
+    let r;
+    if (src.local) r = await post('/api/batches/from-folder', {...src.local, ...common});
+    else {
+      const fd = new FormData();
+      for (const p of src.files) fd.append('files', p.file, p.path);
+      if (src.name) fd.append('folder_name', src.name);
+      for (const [k, v] of Object.entries(common)) fd.append(k, v);
+      r = await api('/api/batches', {method:'POST', body:fd});
     }
+    src = {files:[], local:null, label:''};
+    location.hash = '#/round/' + r.id;
+    toast('Hiding names on this computer. Nothing has been sent yet.');
+  } catch(err) { $('startMsg').textContent = ''; $('startBtn').disabled = false; toast(err.message) }
+}
+
+// ---------- one round ----------
+function renderRound() {
+  const b = D; if (!b) return;
+  if (!$('roundView') || $('roundView').dataset.id !== b.id) {
+    $('main').innerHTML = `<div id="roundView" data-id="${b.id}">
+      <div class="row" style="justify-content:space-between; align-items:flex-start">
+        <div><h1 id="rTitle"></h1><div class="muted" id="rSub"></div></div>
+        <button class="btn quiet" onclick="openOut('folder')">Open Completed Audits</button>
+      </div>
+      <div class="panel" style="margin-top:20px" id="rTrack"></div>
+      <div id="rCheck"></div>
+      <div class="panel" style="margin-top:18px" id="rRes"></div>
+      <div class="split" style="margin-top:18px"><div class="panel" id="rScores"></div><div class="panel" id="rFeedback"></div></div>
+      <div class="row" style="margin-top:22px"><button class="btn danger small" onclick="delRound()">Delete this round</button>
+        <span class="muted">Removes the copies, the hidden version and the key from this computer. Finished forms stay in Completed Audits.</span></div>
+    </div>`;
+    for (const k of ['rTitle','rSub','rTrack','rRes','rScores','rFeedback']) delete cache[k];
   }
-  if (b.status === 'check') h += `<div class="row" style="margin-top:14px"><button onclick="approve()">Looks right: send to Claude</button><span class="muted">Only the copies shown above are sent.</span></div>`;
+  put('rTitle', esc(b.ma || 'Audit round'));
+  put('rSub', `Started ${when(b.created)}. Saving to <code class="path">${esc(b.out_dir)}</code>`);
+  put('rTrack', bigTrack(b));
+  renderCheck(b);
   const rs = Object.entries(b.residents);
-  h += `<h3>Residents</h3><table class="res"><tr><th>Resident</th><th>Shown to Claude as</th><th>Status</th><th>Band and score</th><th></th></tr>`;
-  for (const [name, r] of rs) {
+  if (put('rRes', `<h2>Residents</h2><ul class="res">${rs.map(([name, r]) => {
     const L = (r.label||'').replace(/[\[\]]/g,'');
-    h += `<tr><td>${esc(name)}</td><td class="muted">${esc(r.label||'')}</td><td><span class="pill ${r.status}">${label(r.status)}</span></td>
-      <td><b class="${r.rating||''}">${r.rating||''}</b>${r.total!=null?` <span class="muted">${r.total}/100</span>`:''}</td><td><div class="row">
-      ${r.has_final ? `<button class="small" onclick="openLocal('${L}',false)">Open in Word</button><button class="light small" onclick="openLocal('${L}',true)">Show in folder</button><a class="btn light small" href="/api/batches/${selected}/download/${L}">Download</a>` : ''}
-      ${['running','queued'].includes(r.status) ? `<button class="light small" onclick="act('stop','${L}')">Stop</button>` : ''}
-      ${['failed','stopped','done'].includes(r.status) ? `<button class="light small" onclick="act('retry','${L}')">Run again</button>` : ''}
-      ${L ? `<button class="light small" onclick="toggleLog('${L}')">${openLogs[L]?'Hide':'Show'} progress</button>` : ''}</div></td></tr>`;
-    if (r.result || r.restore) h += `<tr><td colspan="5">${r.result?`<div class="result">${esc(r.result)}</div>`:''}${r.restore?`<div class="muted" style="margin-top:4px">Put back on this computer: ${r.restore.text_swaps} names and details, ${r.restore.screenshots_restored} screenshots${r.restore.placeholders_left.length?` · <span class="bad">left as labels: ${r.restore.placeholders_left.map(esc).join(', ')}</span>`:''}</div>`:''}</td></tr>`;
-    if (L) h += `<tr id="logrow-${L}" style="display:${openLogs[L]?'':'none'}"><td colspan="5"><pre class="log" id="log-${L}"></pre></td></tr>`;
-  }
-  h += `</table>`;
-  if (b.scorebook_name) h += `<div class="row" style="margin-top:10px"><b>Scoring:</b> ${esc(b.scorebook_name)}
-     <button class="small" onclick="openOut('scores')">Open the scores</button>
-     <a class="btn light small" href="/api/batches/${selected}/download-round?what=scores">Download</a></div>`;
-  const fb = b.feedback || {};
-  h += `<h3>Overall Feedback Form</h3>`;
-  if (!b.feedback_template) h += `<div class="muted">Put the blank Overall Feedback Form in the template folder and it is written once the residents are done.</div>`;
-  else {
-    const st = fb.status || 'waiting';
-    const words = {waiting:'written when every resident is done', queued:'waiting', running:'Claude is writing it', done:'done', failed:'failed', stopped:'stopped', stopping:'stopping'};
-    h += `<div class="row"><span class="pill ${st}">${words[st]||st}</span>
-      ${fb.has_final ? `<button class="small" onclick="openOut('feedback')">Open in Word</button><a class="btn light small" href="/api/batches/${selected}/download-round?what=feedback">Download</a>` : ''}
-      ${['running','queued'].includes(st) ? `<button class="light small" onclick="fbAct('stop')">Stop</button>` : ''}
-      ${['failed','stopped','done'].includes(st) || (st==='waiting' && Object.values(b.residents).some(r => r.status==='done')) ? `<button class="light small" onclick="fbAct('run')">${st==='done'?'Write it again':'Write it now'}</button>` : ''}
-      <button class="light small" onclick="toggleLog('_round')">${openLogs['_round']?'Hide':'Show'} progress</button></div>`;
-    if (fb.result) h += `<div class="result" style="margin-top:6px">${esc(fb.result)}</div>`;
-    h += `<pre class="log" id="log-_round" style="display:${openLogs['_round']?'':'none'}"></pre>`;
-  }
-  h += `<div class="row" style="margin-top:14px"><button class="danger" onclick="delRound()">Delete this round and its copies</button>
-    <span class="muted">Removes the copies, the hidden version and the key from this computer. Finished forms in your save folder stay.</span></div>`;
-  $('detail').innerHTML = h;
-  logState = {};
-  if (view.path) show(encodeURIComponent(view.path), view.page);
-  await pollLogs(b);
+    return `<li><div class="line">
+        <div class="who"><b>${esc(name)}</b><span class="muted">Shown to Claude as ${esc(r.label||'(being hidden)')}</span></div>
+        ${miniTrack(b.status, r)}
+        <div>${statusWords(r)}</div>
+        <div class="row">${bandPill(r)}${scoreBar(r)}</div></div>
+      <div class="row acts">
+        ${r.has_final ? `<button class="btn small" onclick="openLocal('${L}',false)">Open in Word</button><button class="btn quiet small" onclick="openLocal('${L}',true)">Show in folder</button><a class="btn quiet small" href="/api/batches/${b.id}/download/${L}">Download</a>` : ''}
+        ${['running','queued'].includes(r.status) ? `<button class="btn quiet small" onclick="act('stop','${L}')">Stop</button>` : ''}
+        ${['failed','stopped','done'].includes(r.status) ? `<button class="btn quiet small" onclick="act('retry','${L}')">Run again</button>` : ''}
+        ${L ? `<button class="btn quiet small" onclick="toggleLog('${L}')">${openLogs[L] ? 'Hide' : 'Show'} progress</button>` : ''}
+      </div>
+      ${r.result ? `<details style="margin-top:8px"><summary class="muted" style="cursor:pointer">What Claude found</summary><div class="result">${esc(r.result)}</div></details>` : ''}
+      ${r.restore && r.restore.placeholders_left.length ? `<div class="bad" style="margin-top:6px">Still shown as labels in the form, check by hand: ${r.restore.placeholders_left.map(esc).join(', ')}</div>` : ''}
+      <pre class="log ${openLogs[L] ? '' : 'hidden'}" id="log-${L}"></pre></li>`}).join('')}</ul>`)) { for (const k in logPos) if (k !== '_round') logPos[k] = 0 }
+
+  put('rScores', `<h2>Scores</h2>${b.scorebook_name
+      ? `<p>The Audit Scoring Framework for this round, with a breakdown tab for each resident.</p>
+         <div class="row"><button class="btn" onclick="openOut('scores')">Open the scores</button><a class="btn quiet" href="/api/batches/${b.id}/download-round?what=scores">Download</a></div>
+         <div class="muted" style="margin-top:8px">${esc(b.scorebook_name)}</div>`
+      : `<p class="muted">The scoring spreadsheet appears here once the first resident is scored.</p>`}`);
+
+  const fb = b.feedback || {}, st = fb.status || 'waiting';
+  const fbWords = {waiting:'Written once every resident is done.', queued:'Waiting its turn.', running: fb.activity ? `${fb.activity.doing} (${fb.activity.step} of ${fb.activity.of})` : 'Claude is writing it.',
+    done:'Done.', failed:'Did not finish.', stopped:'Stopped.', stopping:'Stopping.'}[st] || st;
+  if (put('rFeedback', `<h2>Overall Feedback Form</h2>${!b.feedback_template
+      ? `<p class="muted">Put the blank Overall Feedback Form in the template folder (see Setup) and it is written for every round.</p>`
+      : `<p>${fbWords}</p><div class="row">
+        ${fb.has_final ? `<button class="btn" onclick="openOut('feedback')">Open in Word</button><a class="btn quiet" href="/api/batches/${b.id}/download-round?what=feedback">Download</a>` : ''}
+        ${['running','queued'].includes(st) ? `<button class="btn quiet small" onclick="fbAct('stop')">Stop</button>` : ''}
+        ${['failed','stopped','done'].includes(st) || (st==='waiting' && rs.some(([, r]) => r.status==='done')) ? `<button class="btn quiet small" onclick="fbAct('run')">${st==='done' ? 'Write it again' : 'Write it now'}</button>` : ''}
+        <button class="btn quiet small" onclick="toggleLog('_round')">${openLogs['_round'] ? 'Hide' : 'Show'} progress</button></div>
+        ${fb.result ? `<details style="margin-top:8px"><summary class="muted" style="cursor:pointer">What Claude found</summary><div class="result">${esc(fb.result)}</div></details>` : ''}
+        <pre class="log ${openLogs['_round'] ? '' : 'hidden'}" id="log-_round"></pre>`}`)) logPos['_round'] = 0;
 }
-async function pollLogs(b) {
-  const labels = Object.values(b.residents).map(r => (r.label||'').replace(/[\[\]]/g,'')).concat(['_round']);
-  for (const L of labels) {
-    if (!L || !openLogs[L]) continue;
-    const st = logState[L] || 0;
-    const d = await api(`/api/batches/${selected}/log?label=${L}&offset=${st}`);
-    if (d.lines.length) { const el = $('log-'+L); if (el) { el.textContent += d.lines.join('\n') + '\n'; el.scrollTop = 1e9 } }
-    logState[L] = d.next;
+
+function renderCheck(b) {
+  const rep = b.report;
+  const sig = JSON.stringify([b.status, rep && rep.counts, rep && rep.leaks.length, rep && (rep.possible_names||[]).length, (rep && rep.held_back || []).length, b.preview.length]);
+  const box = $('rCheck');
+  if (box.dataset.sig === sig) return;
+  box.dataset.sig = sig;
+  if (b.status === 'redacting') { box.innerHTML = `<div class="panel" style="margin-top:18px"><h2>Hiding names on this computer</h2><p class="muted">Names, addresses, dates of birth and ID numbers are being swapped for labels. Nothing has been sent anywhere. This takes a minute or two.</p></div>`; return }
+  if (!rep || !['check','blocked'].includes(b.status)) {
+    box.innerHTML = rep ? `<details class="panel" style="margin-top:18px"><summary style="cursor:pointer; font-weight:700">What was hidden before anything went to Claude</summary><div class="facts">${hiddenFacts(rep)}</div></details>` : ''; return }
+  const pn = [...new Set((rep.possible_names||[]).map(p => p.text))].slice(0, 60);
+  box.innerHTML = `<div class="panel yourcheck" style="margin-top:18px">
+    <h2>Your check before anything goes to Claude</h2>
+    <p>${rep.leaks.length ? `<span class="bad">A hidden detail was still found in ${rep.leaks.length} place(s), so this round cannot be sent. Add the names below and hide them again.</span>`
+       : `<span class="ok">Every hidden detail was searched for again in the copy, and none were left.</span> Look through the copies below, then send it.`}</p>
+    <div class="facts">${hiddenFacts(rep)}</div>
+    ${!rep.ner ? `<p class="bad">The name finder is off, so only resident names and names you listed were hidden.</p>` : ''}
+    ${rep.held_back.length ? `<p><b>Not sent to Claude</b>, because these could not be hidden safely. Check them yourself:</p><ul>${rep.held_back.map(f => `<li>${esc(f.file)}: ${esc(f.reason||'')}</li>`).join('')}</ul>` : ''}
+    ${pn.length ? `<p style="margin-bottom:0"><b>These might still be names.</b> Tick any that are, then hide them.</p><div class="names">${pn.map(n => `<label><input type="checkbox" class="pn" value="${esc(n)}"> ${esc(n)}</label>`).join('')}</div>` : ''}
+    <label class="field" for="moreNames">Anything else to hide? One per line</label>
+    <textarea id="moreNames"></textarea>
+    <div class="row" style="margin-top:8px"><button class="btn quiet small" onclick="redo()">Hide these and check again</button><label class="check" style="margin:0"><input type="checkbox" id="always"> Always hide these</label></div>
+    ${b.preview.length ? `<h3 style="margin-top:18px">What Claude will see</h3>
+      <div class="viewer"><ul id="pvList">${b.preview.map(f => `<li data-p="${esc(f.path)}" onclick="show(this.dataset.p)">${esc(f.path)}</li>`).join('')}</ul>
+      <div class="page" id="pageView"><p class="muted" style="text-align:center; margin-top:120px">Pick a file to see the hidden copy.</p></div></div>` : ''}
+    ${b.status === 'check' ? `<div class="row" style="margin-top:18px"><button class="btn mark" onclick="approve()">Looks right, send to Claude</button><span class="muted">Only these hidden copies are sent.</span></div>` : ''}
+  </div>`;
+  if (view.path) show(view.path, view.page);
+}
+function hiddenFacts(rep) {
+  const words = {RESIDENT:['resident','residents'], PERSON:['other person','other people'], ADDRESS:['address','addresses'], POSTCODE:['postcode','postcodes'],
+    PHONE:['phone number','phone numbers'], EMAIL:['email','emails'], DOB:['date of birth','dates of birth'], NI_NUMBER:['NI number','NI numbers'],
+    NHS_NUMBER:['NHS number','NHS numbers'], BANK_DETAILS:['bank detail','bank details']};
+  const c = Object.entries(rep.counts || {});
+  return c.length ? c.map(([k, n]) => `<span>${n} ${(words[k]||[k,k])[n===1?0:1]} hidden</span>`).join('') : '<span>Nothing to hide was found</span>';
+}
+async function show(path, page=1) {
+  view = {path, page};
+  document.querySelectorAll('#pvList li').forEach(li => li.classList.toggle('sel', li.dataset.p === path));
+  const r = await fetch(`/api/batches/${D.id}/preview?path=${encodeURIComponent(path)}&page=${page}`);
+  const pv = $('pageView'); if (!pv) return;
+  if ((r.headers.get('content-type')||'').startsWith('image')) {
+    const pages = +(r.headers.get('X-Pages')||1), url = URL.createObjectURL(await r.blob());
+    pv.innerHTML = `<div class="row" style="justify-content:center; margin-bottom:8px">
+      <button class="btn quiet small" ${page<=1?'disabled':''} onclick="show(view.path, ${page-1})">Previous page</button>
+      <span class="muted">Page ${page} of ${pages}</span>
+      <button class="btn quiet small" ${page>=pages?'disabled':''} onclick="show(view.path, ${page+1})">Next page</button></div><img src="${url}" alt="Hidden copy, page ${page}">`;
+  } else pv.innerHTML = `<pre>${esc(await r.text())}</pre>`;
+}
+async function pollLogs() {
+  for (const L of Object.keys(openLogs).filter(k => openLogs[k])) {
+    const el = $('log-' + L); if (!el) continue;
+    const from = logPos[L] || 0;
+    if (!from) el.textContent = '';
+    const d = await api(`/api/batches/${D.id}/log?label=${L}&offset=${from}`);
+    if (d.lines.length) { el.textContent += d.lines.join('\n') + '\n'; el.scrollTop = 1e9 }
+    logPos[L] = d.next;
   }
 }
-function toggleLog(L) { openLogs[L] = !openLogs[L]; lastDetail=''; drawRound() }
-async function show(encPath, page=1) {
-  const path = decodeURIComponent(encPath); view.path = path; view.page = page;
-  document.querySelectorAll('.viewer li').forEach(li => li.classList.toggle('sel', li.textContent === path));
-  const url = `/api/batches/${selected}/preview?path=${encodeURIComponent(path)}&page=${page}`;
-  const r = await fetch(url); const ct = r.headers.get('content-type')||'';
-  if (ct.startsWith('image')) {
-    view.pages = +(r.headers.get('X-Pages')||1);
-    const src = URL.createObjectURL(await r.blob());
-    $('pageView').innerHTML = `<div class="row" style="margin-bottom:6px"><button class="light small" onclick="show('${encPath}', ${Math.max(1,page-1)})" ${page<=1?'disabled':''}>‹ Page</button>
-      <span class="muted">Page ${page} of ${view.pages}</span><button class="light small" onclick="show('${encPath}', ${Math.min(view.pages,page+1)})" ${page>=view.pages?'disabled':''}>Page ›</button></div><img src="${src}">`;
-  } else { $('pageView').innerHTML = `<pre class="txt">${esc(await r.text())}</pre>` }
-}
-async function redo(_) {
+function toggleLog(L) { openLogs[L] = !openLogs[L]; logPos[L] = 0; delete cache['rRes']; delete cache['rFeedback']; renderRound(); pollLogs() }
+async function redo() {
   const names = [...document.querySelectorAll('.pn:checked')].map(c => c.value).concat(($('moreNames')?.value||'').split('\n')).filter(n => n.trim());
-  if (!names.length) return alert('Tick a name or type one first.');
-  try { await post(`/api/batches/${selected}/redo`, {names, always: $('always').checked}) } catch(e) { return alert(e.message) }
-  lastDetail=''; drawRound(); refresh();
+  if (!names.length) return toast('Tick a name or type one first.');
+  try { await post(`/api/batches/${D.id}/redo`, {names, always: $('always').checked}); toast('Hiding them and checking again.') } catch(e) { return toast(e.message) }
+  tick();
 }
-async function approve() { try { await post(`/api/batches/${selected}/approve`) } catch(e) { return alert(e.message) } lastDetail=''; drawRound(); refresh() }
-async function act(a, L) { try { await post(`/api/batches/${selected}/${a}/${L}`) } catch(e) { alert(e.message) } lastDetail=''; drawRound(); refresh() }
-async function openOut(what) { try { await post(`/api/batches/${selected}/open-round?what=${what}`) } catch(e) { alert(e.message) } }
-async function fbAct(a) { try { await post(`/api/batches/${selected}/feedback/${a}`) } catch(e) { return alert(e.message) } lastDetail=''; drawRound(); refresh() }
-async function openLocal(L, folder) { try { await post(`/api/batches/${selected}/open/${L}?folder=${folder}`) } catch(e) { alert(e.message) } }
+async function approve() { try { const r = await post(`/api/batches/${D.id}/approve`); toast(`Sent ${r.queued} ${r.queued===1?'resident':'residents'} to Claude.`) } catch(e) { return toast(e.message) } tick() }
+async function act(a, L) { try { await post(`/api/batches/${D.id}/${a}/${L}`); toast(a === 'stop' ? 'Stopping.' : 'Running it again.') } catch(e) { toast(e.message) } tick() }
+async function fbAct(a) { try { await post(`/api/batches/${D.id}/feedback/${a}`); toast(a === 'stop' ? 'Stopping.' : 'Writing the Overall Feedback Form.') } catch(e) { toast(e.message) } tick() }
+async function openLocal(L, folder) { try { await post(`/api/batches/${D.id}/open/${L}?folder=${folder}`) } catch(e) { toast(e.message) } }
+async function openOut(what) { try { await post(`/api/batches/${D.id}/open-round?what=${what}`) } catch(e) { toast(e.message) } }
 async function delRound() {
-  if (!confirm('Delete this round from this computer? The copies, the hidden version and the key are removed. Finished forms in your save folder stay.')) return;
-  try { await api(`/api/batches/${selected}`, {method:'DELETE'}) } catch(e) { return alert(e.message) }
-  selected=null; lastDetail=''; $('detail').innerHTML=''; refresh();
+  if (!confirm('Delete this round from this computer? The copies, the hidden version and the key are removed. Finished forms in Completed Audits stay.')) return;
+  try { await api(`/api/batches/${D.id}`, {method:'DELETE'}) } catch(e) { return toast(e.message) }
+  location.hash = '#/'; toast('Round deleted.');
 }
-refresh(); setInterval(() => { refresh(); drawRound() }, 2500);
+
+// ---------- setup ----------
+function renderSetup() {
+  const s = S;
+  if (!$('setupView')) {
+    $('main').innerHTML = `<div id="setupView">
+      <h1>Setup</h1><p class="lede">Done once. Files you put in these folders are picked up on their own.</p>
+      <div class="split"><div class="panel"><h2>Checklist</h2><ul class="todo" id="todo"></ul></div>
+      <div class="stack"><div class="panel"><h2>Privacy</h2>
+        <label class="field" for="hideNames">Names to always hide</label>
+        <div class="muted">Support workers, managers and anyone else who comes up a lot. One per line.</div>
+        <textarea id="hideNames" style="margin-top:6px; min-height:110px"></textarea>
+        <label class="check"><input type="checkbox" id="checkFirst"> Let me check the hidden copy before anything goes to Claude</label>
+        <label class="field" for="outDir">For uploaded files, save finished forms in</label>
+        <input type="text" id="outDir">
+        <div class="muted" style="margin-top:4px">Folders you paste or drop in the inbox get their own Completed Audits folder instead.</div>
+        <div class="row" style="margin-top:14px"><button class="btn" onclick="saveSettings()">Save settings</button></div></div>
+      <div class="panel" id="refPanel"></div></div></div></div>`;
+    $('hideNames').value = s.settings.hide_names.join('\n'); $('outDir').value = s.settings.output_dir; $('checkFirst').checked = s.settings.check_before_sending;
+    delete cache['todo']; delete cache['refPanel'];
+  }
+  const li = s.login.loggedIn;
+  const item = (ok, title, body, action='') => `<li><span class="tick ${ok?'done':'need'}">${ok?'✓':'!'}</span><div><b>${title}</b><div class="muted">${body}</div></div><div>${action}</div></li>`;
+  put('todo',
+    item(li===true, 'Claude is logged in', li===true ? 'Audits run on your Claude account.' : 'Log in once on this computer.', li===true ? '' : `<button class="btn mark small" onclick="claudeLogin()">Log in</button>`) +
+    item(!!s.template, 'Blank Support Audit form', s.template ? `Using ${esc(s.template)}` : `Put Support_Audit_OG.docx in <code class="path">${esc(s.folders.template)}</code>`, `<button class="btn quiet small" onclick="templateFile.click()">Add</button>`) +
+    item(!!s.feedback_template, 'Blank Overall Feedback Form', s.feedback_template ? `Using ${esc(s.feedback_template)}` : `Put it in the same folder: <code class="path">${esc(s.folders.template)}</code>`) +
+    item(s.reference.length > 0, 'Reference files', s.reference.length ? `${s.reference.length} files: house style, rules and your completed audits.` : `House style, rules, your SKILL.md and completed audits go in <code class="path">${esc(s.folders.reference)}</code>`, `<button class="btn quiet small" onclick="refFiles.click()">Add</button>`) +
+    item(s.tools.name_finder && s.tools.ocr && s.tools.office, 'Helpers installed', `Name finder ${s.tools.name_finder?'on':'off'}, scan reader ${s.tools.ocr?'on':'off'}, Word converter ${s.tools.office?'on':'off'}.`) +
+    (s.template_others.length ? item(true, 'Other forms in the template folder', `Not used: ${s.template_others.map(esc).join(', ')}`) : ''));
+  put('refPanel', `<h2>Reference files</h2><div class="muted">Names in these are hidden too before Claude reads them.</div>
+    <ul class="files">${s.reference.map(n => `<li><span>${esc(n)}</span><button class="btn quiet small" onclick="delRef('${encodeURIComponent(n)}')">Remove</button></li>`).join('') || '<li class="muted">None yet</li>'}</ul>
+    ${s.reference_held_back.length ? `<p class="bad">Not given to Claude, because they could not be hidden safely: ${s.reference_held_back.map(esc).join(', ')}</p>` : ''}
+    <div class="row" style="margin-top:10px"><button class="btn quiet small" onclick="refFiles.click()">Add reference files</button></div>`);
+}
+async function saveSettings() {
+  try { await post('/api/settings', {hide_names: $('hideNames').value.split('\n'), output_dir: $('outDir').value, check_before_sending: $('checkFirst').checked}); toast('Settings saved.') } catch(e) { toast(e.message) }
+}
+$('templateFile').onchange = async e => { const fd = new FormData(); fd.append('file', e.target.files[0]); e.target.value='';
+  try { await api('/api/template', {method:'POST', body:fd}); toast('Blank form added.') } catch(err) { toast(err.message) } tick() };
+$('refFiles').onchange = async e => { const fd = new FormData(); for (const f of e.target.files) fd.append('files', f); e.target.value='';
+  try { await api('/api/reference', {method:'POST', body:fd}); toast('Reference files added.') } catch(err) { toast(err.message) } tick() };
+async function delRef(n) { await api('/api/reference/'+n, {method:'DELETE'}); toast('Removed.'); tick() }
+async function claudeLogin() {
+  try { await post('/api/login') } catch(e) { return toast(e.message) }
+  alert('A window has opened to sign Claude in. A browser page asks you to log in to your Claude account. When it says you are logged in, close that window. This page updates within a few seconds.');
+}
+
+// ---------- routing and the loop ----------
+function readRoute() {
+  const h = location.hash.replace(/^#\/?/, '');
+  if (h.startsWith('round/')) return {name:'round', id:h.slice(6)};
+  if (h === 'new') return {name:'new'};
+  if (h === 'setup') return {name:'setup'};
+  return {name:'home'};
+}
+window.onhashchange = () => {
+  const r = readRoute();
+  if (r.name !== route.name || r.id !== route.id) {
+    route = r; for (const k in cache) delete cache[k]; $('main').innerHTML = ''; D = null; openLogs = {}; logPos = {}; view = {path:null, page:1};
+    window.scrollTo(0, 0); tick();
+  }
+};
+let busy = false;
+async function tick() {
+  if (busy) return; busy = true;
+  try {
+    S = await api('/api/state');
+    renderRail();
+    if (route.name === 'round') {
+      try { D = await api('/api/batches/' + route.id) } catch(e) { D = null; location.hash = '#/'; return }
+      renderRound(); await pollLogs();
+    } else if (route.name === 'new') renderNew();
+    else if (route.name === 'setup') renderSetup();
+    else renderHome();
+  } catch(e) { put('main', `<div class="empty"><h3>Support Audit isn't responding</h3><p>Close this page and open Support Audit from the desktop icon again.</p></div>`) }
+  finally { busy = false }
+}
+route = readRoute(); tick(); setInterval(tick, 2500);
 </script>
 </body>
 </html>
