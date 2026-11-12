@@ -145,14 +145,16 @@ async function refresh() {
   $('chips').innerHTML =
     (s.login.loggedIn === true ? '<span class="on">Claude: logged in</span>'
       : s.login.loggedIn === null ? `<span title="${esc(s.login.reason||'')}">Claude: checking…</span>`
-      : '<span class="off" title="Open a terminal and type: claude auth login">Claude: not logged in</span>') +
+      : '<span class="off">Claude: not logged in</span> <button class="small" onclick="claudeLogin()">Log in to Claude</button>') +
     `<span class="${t.name_finder?'on':'off'}">Name finder ${t.name_finder?'on':'off'}</span>` +
     `<span class="${t.ocr?'on':'off'}">Scan reader ${t.ocr?'on':'off'}</span>` +
     `<span class="${t.office?'on':'off'}">Word converter ${t.office?'on':'off'}</span>`;
   $('tplPath').textContent = s.folders.template; $('refPath').textContent = s.folders.reference;
   $('inboxBox').style.display = s.inbox.length ? '' : 'none';
   $('inboxList').innerHTML = s.inbox.map(f => `<button class="light small" onclick="useInbox('${encodeURIComponent(f.name)}')">${esc(f.name)} (${f.files} files)</button>`).join('');
-  $('templateState').innerHTML = s.template ? `<span class="ok">✓</span> ${esc(s.template)}` : '<span class="bad">Not uploaded yet</span>';
+  $('templateState').innerHTML = (s.template ? `<span class="ok">✓ Using</span> ${esc(s.template)}`
+      : (s.template_others.length ? '<span class="bad">No Support Audit form found. Name the blank Form A Support_Audit_OG.docx.</span>' : '<span class="bad">Not added yet</span>'))
+    + (s.template_others.length ? `<br><span class="muted">Not used (other forms in that folder): ${s.template_others.map(esc).join(', ')}</span>` : '');
   $('refList').innerHTML = s.reference.map(n => `<li><span>${esc(n)}</span><button class="light small" onclick="delRef('${encodeURIComponent(n)}')">Remove</button></li>`).join('') || '<li class="muted">Nothing yet</li>';
   $('refNote').innerHTML = (s.reference_held_back.length ? `<span class="bad">Not given to Claude (could not be hidden safely): ${s.reference_held_back.map(esc).join(', ')}</span>` : '')
     + (s.reference_leaks ? ' <span class="bad">Some names could not be hidden in the reference files; they are not used.</span>' : '');
@@ -169,6 +171,10 @@ async function refresh() {
 }
 const label = s => ({check:'ready to check', redacting:'hiding names…', approved:'sent', blocked:'cannot send', queued:'waiting', running:'Claude is auditing', done:'done', failed:'failed', stopped:'stopped', waiting:'waiting', stopping:'stopping'}[s] || s);
 
+async function claudeLogin() {
+  try { await post('/api/login') } catch(e) { return alert(e.message) }
+  alert('A window has opened to sign Claude in. A browser page will ask you to log in to your Claude account. When it says you are logged in, close that window. This page turns green within a few seconds.');
+}
 async function saveSettings() {
   await post('/api/settings', {hide_names: $('hideNames').value.split('\n'), output_dir: $('outDir').value, check_before_sending: $('checkFirst').checked});
   $('setMsg').textContent = 'Saved'; setTimeout(() => $('setMsg').textContent = '', 2000);

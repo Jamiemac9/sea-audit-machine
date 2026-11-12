@@ -47,9 +47,24 @@ def settings() -> dict:
     return s
 
 
+def template_files() -> list[Path]:
+    return sorted(p for p in TEMPLATE_DIR.glob("*.docx") if not p.name.startswith("~$"))
+
+
 def template_path() -> Path | None:
-    files = sorted(p for p in TEMPLATE_DIR.glob("*.docx") if not p.name.startswith("~$"))
-    return files[0] if files else None
+    """The blank Form A. If other forms sit in the folder too, the one named like
+    Support Audit wins (e.g. Support_Audit_OG.docx over Overall Feedback Form OG.docx)."""
+    files = template_files()
+    key = lambda p: re.sub(r"[^a-z]", "", p.stem.lower())
+    for want in ("supportauditog", "supportaudit"):
+        hits = [p for p in files if key(p).startswith(want)]
+        if hits:
+            return hits[0]
+    others = ("feedback", "caseload", "overall")
+    if len(files) == 1 and not any(o in key(files[0]) for o in others):
+        return files[0]
+    hits = [p for p in files if "supportaudit" in key(p) or "forma" in key(p)]
+    return hits[0] if hits else None
 
 
 def refresh_reference() -> dict:
