@@ -311,6 +311,32 @@ def ocr_learn(path: Path, rd) -> int:
     return n
 
 
+def _sweep(page, rd, rounds: int = 3) -> int:
+    """Second look at a typed page: anything known that is still in its text (for example a
+    name in a header stored without spaces, "Keyworker:JohnSmith") is found by its letters and
+    hidden. Only whole-word matches are hidden, so "Sam" never blacks out "same"."""
+    n = 0
+    for _ in range(rounds):
+        low = page.get_text("text").lower()
+        left = [(t, ph) for t, ph in rd.key.terms.items()
+                if re.search(r"(?<![a-z0-9])" + re.escape(t) + r"(?![a-z0-9])", low)]
+        if not left:
+            break
+        added = 0
+        for term, ph in left:
+            for r in page.search_for(term):
+                ctx = page.get_text("text", clip=fitz.Rect(r.x0 - 8, r.y0 + 1, r.x1 + 8, r.y1 - 1)).lower()
+                ctx = re.sub(r"\s+", " ", ctx)
+                if re.search(r"(?<![a-z0-9])" + re.escape(term) + r"(?![a-z0-9])", ctx) or len(term) >= 6:
+                    page.add_redact_annot(r, text=ph, fontsize=6, fill=(0.88, 0.88, 0.88))
+                    added += 1
+        if not added:
+            break
+        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+        n += added
+    return n
+
+
 def redact_pdf(src: Path, dst: Path, rd: Redactor) -> dict:
     doc = fitz.open(src)
     boxes, scanned_pages = 0, []
@@ -332,6 +358,7 @@ def redact_pdf(src: Path, dst: Path, rd: Redactor) -> dict:
                     w.field_value = new
                     w.update()
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+        boxes += _sweep(page, rd)
     if scanned_pages:
         if not _OCR:
             doc.close()
