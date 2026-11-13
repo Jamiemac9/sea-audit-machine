@@ -92,7 +92,12 @@ def shared_passages(texts: dict[str, str]):
     return copied, template_like
 
 
+TEXT_ONLY = False
+
+
 def render_two_up(doc, out_dir: Path, stem: str, dpi: int = 80) -> list[str]:
+    if TEXT_ONLY:   # cross-resident check: text and shared passages only, no page images
+        return []
     outs = []
     for i in range(0, len(doc), 2):
         imgs = []
@@ -278,6 +283,9 @@ def main(folder: Path, work: Path):
 
 
 if __name__ == "__main__":
+    TEXT_ONLY = "--text-only" in sys.argv
+    if TEXT_ONLY:
+        sys.argv.remove("--text-only")
     if len(sys.argv) != 3:
         sys.exit(__doc__)
     main(Path(sys.argv[1]).expanduser().resolve(), Path(sys.argv[2]).expanduser().resolve())
