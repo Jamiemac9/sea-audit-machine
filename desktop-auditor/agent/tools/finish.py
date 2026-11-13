@@ -20,6 +20,33 @@ import pymupdf as fitz
 from docx import Document
 
 
+
+def run_office(office: str, args: list, timeout: int = 240) -> bool:
+    """Run LibreOffice so it can never hang the audit: its own throwaway profile (so a copy
+    already open, or a first-run dialog, can't block it) and the whole process tree is killed
+    if it runs past the timeout."""
+    import tempfile, shutil as _sh
+    prof = Path(tempfile.mkdtemp(prefix="sa-office-"))
+    cmd = [office, f"-env:UserInstallation={prof.as_uri()}", "--headless", "--norestore", "--nologo", *args]
+    nt = os.name == "nt"
+    p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                         **({"creationflags": 0x08000000} if nt else {"start_new_session": True}))
+    try:
+        p.wait(timeout=timeout)
+        return p.returncode == 0
+    except subprocess.TimeoutExpired:
+        if nt:
+            subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"], capture_output=True, creationflags=0x08000000)
+        else:
+            import signal
+            try:
+                os.killpg(p.pid, signal.SIGKILL)
+            except Exception:
+                p.kill()
+        return False
+    finally:
+        _sh.rmtree(prof, ignore_errors=True)
+
 def soffice_path():
     for name in ("soffice", "libreoffice"):
         p = shutil.which(name)
@@ -60,10 +87,10 @@ def main(docx_path, work):
         return
     out = work / "check"
     out.mkdir(parents=True, exist_ok=True)
-    subprocess.run([office, "--headless", "--convert-to", "pdf", "--outdir", str(out), str(docx_path)],
-                   check=True, capture_output=True, timeout=180,
-                   **({"creationflags": 0x08000000} if os.name == "nt" else {}))
     pdf = out / (docx_path.stem + ".pdf")
+    if not run_office(office, ["--convert-to", "pdf", "--outdir", str(out), str(docx_path)]) or not pdf.exists():
+        print("LibreOffice could not render the form in 4 minutes: open the .docx in Word and look at every page yourself.")
+        return
     d = fitz.open(pdf)
     for i, page in enumerate(d, 1):
         page.get_pixmap(dpi=70).save(out / f"page-{i:02d}.png")

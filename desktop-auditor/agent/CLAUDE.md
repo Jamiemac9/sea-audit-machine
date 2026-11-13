@@ -52,12 +52,15 @@ audits. Where the skill and a reference file disagree, the skill wins.
    text files it writes.
 3. **Read the resident's file mechanically:**
    `"{{PY}}" "{{TOOLS}}/read_pack.py" "{{RESIDENT}}" "{{WORK}}/pack"`.
+   Scanned pages were already read on this computer: their text (names swapped for labels) is
+   in the text files. Do not run Tesseract or any OCR yourself, and do not install anything.
    Start with `pack/summary.md`, then read every text file and look at every page image in
    `pack/pages/` (ticks, signatures and blank boxes only show there). The summary's lists of
    reused images, repeated sentences and impossible risk scores are leads to check against
    the documents, not findings in themselves. For copying between residents, also run it on
-   the round: `"{{PY}}" "{{TOOLS}}/read_pack.py" "{{ROUND}}" "{{WORK}}/round"` and read
-   `round/summary.md`.
+   the round: `"{{PY}}" "{{TOOLS}}/read_pack.py" "{{ROUND}}" "{{WORK}}/round" --text-only` and read
+   `round/summary.md` only. Do not open other residents' page images: it fills the session
+   and their files are audited separately.
 4. **Work through "How to read the file" in the skill** for every session and every
    comparison it lists. Nothing is skipped because the tool did part of it.
 5. **Map the form:** `"{{PY}}" "{{TOOLS}}/inspect_template.py" "{{TEMPLATE}}" "{{WORK}}/template-map.md"`.

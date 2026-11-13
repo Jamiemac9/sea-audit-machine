@@ -84,6 +84,33 @@ PATTERNS = [
 ]
 
 
+
+def run_office(office: str, args: list, timeout: int = 240) -> bool:
+    """Run LibreOffice so it can never hang the audit: its own throwaway profile (so a copy
+    already open, or a first-run dialog, can't block it) and the whole process tree is killed
+    if it runs past the timeout."""
+    import tempfile, shutil as _sh
+    prof = Path(tempfile.mkdtemp(prefix="sa-office-"))
+    cmd = [office, f"-env:UserInstallation={prof.as_uri()}", "--headless", "--norestore", "--nologo", *args]
+    nt = os.name == "nt"
+    p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                         **({"creationflags": 0x08000000} if nt else {"start_new_session": True}))
+    try:
+        p.wait(timeout=timeout)
+        return p.returncode == 0
+    except subprocess.TimeoutExpired:
+        if nt:
+            subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"], capture_output=True, creationflags=0x08000000)
+        else:
+            import signal
+            try:
+                os.killpg(p.pid, signal.SIGKILL)
+            except Exception:
+                p.kill()
+        return False
+    finally:
+        _sh.rmtree(prof, ignore_errors=True)
+
 def norm(s: str) -> str:
     return re.sub(r"\s+", " ", s.strip().lower())
 
@@ -272,18 +299,29 @@ def _ocr_redact_page(doc, pno: int, rd: Redactor) -> int:
     page = doc[pno]
     pix = page.get_pixmap(dpi=200)
     img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-    img, n, text = _ocr_redact_image(img, rd)
+    img, n, text, lines = _ocr_redact_image(img, rd, with_lines=True)
     rect = page.rect
     doc.delete_page(pno)
     new = doc.new_page(pno, width=rect.width, height=rect.height)
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
         img.save(f.name)
         new.insert_image(new.rect, filename=f.name)
-    new.insert_textbox(fitz.Rect(0, 0, 1, 1), rd.text(text), fontsize=1, render_mode=3)  # invisible text layer
+    _text_layer(new, rd.text(lines))
     return n
 
 
-def _ocr_redact_image(img: Image.Image, rd: Redactor):
+def _text_layer(page, text: str):
+    """Invisible text over the page image, so the page can be read and searched as text.
+    (Names in it are already swapped for labels.)"""
+    if not text.strip():
+        return
+    for size in (6, 4, 3, 2, 1.5, 1):
+        if page.insert_textbox(page.rect + (4, 4, -4, -4), text, fontsize=size, render_mode=3) >= 0:
+            return
+    page.insert_textbox(page.rect, text[:20000], fontsize=1, render_mode=3)
+
+
+def _ocr_redact_image(img: Image.Image, rd: Redactor, with_lines: bool = False):
     from PIL import ImageDraw
     data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
     words = [(data["left"][i], data["top"][i], data["left"][i] + data["width"][i],
@@ -299,6 +337,12 @@ def _ocr_redact_image(img: Image.Image, rd: Redactor):
             draw.rectangle([r.x0 - 2, r.y0 - 2, r.x1 + 2, r.y1 + 2], fill="black")
             draw.text((r.x0 + 2, r.y0), ph, fill="white", font=_label_font(max(10, int((r.y1 - r.y0) * 0.6))))
             n += 1
+    if with_lines:   # the same words, kept in their lines, for the page's text layer
+        rows: dict = {}
+        for i, t in enumerate(data["text"]):
+            if t.strip():
+                rows.setdefault((data["block_num"][i], data["par_num"][i], data["line_num"][i]), []).append(t)
+        return img, n, text, "\n".join(" ".join(ws) for ws in rows.values())
     return img, n, text
 
 
@@ -340,9 +384,7 @@ def docx_to_pdf(src: Path, out_dir: Path) -> Path | None:
     office = soffice()
     if not office:
         return None
-    subprocess.run([office, "--headless", "--convert-to", "pdf", "--outdir", str(out_dir), str(src)],
-                   capture_output=True, timeout=180,
-                   **({"creationflags": 0x08000000} if os.name == "nt" else {}))
+    run_office(office, ["--convert-to", "pdf", "--outdir", str(out_dir), str(src)])
     pdf = out_dir / (src.stem + ".pdf")
     return pdf if pdf.exists() else None
 
