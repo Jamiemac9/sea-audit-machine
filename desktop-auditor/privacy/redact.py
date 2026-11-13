@@ -600,6 +600,44 @@ def redacted_text_of(path: Path) -> str:
     return ""
 
 
+def _shape(term: str) -> str:
+    """What a term looks like, without what it says: 'Xxxxx Xxxxx (2 words, 11 chars, plain letters)'."""
+    m = "".join("X" if c.isupper() else "x" if c.isalpha() else "9" if c.isdigit() else c for c in term)
+    kinds = []
+    if any(c.isalpha() and not c.isascii() for c in term): kinds.append("non-English letters")
+    if any(c.isdigit() for c in term): kinds.append("digits")
+    if any(not c.isalnum() and not c.isspace() for c in term): kinds.append("punctuation " + "".join(sorted({c for c in term if not c.isalnum() and not c.isspace()})))
+    return f"{m} ({len(term.split())} words, {len(term)} chars, {', '.join(kinds) or 'plain letters'})"
+
+
+def _mask(text: str) -> str:
+    return re.sub(r"\[[A-Z_]+\d*\]|[^\W\d_]", lambda m: m.group(0) if m.group(0).startswith("[") else "x", text)
+
+
+def leak_where(path: Path, term: str) -> list[str]:
+    """Where in a file a term still shows, described without the term itself."""
+    rx = re.compile(r"(?<![^\W_])" + re.escape(term) + r"(?![^\W_])", re.I)
+    out = []
+    if rx.search(path.name):
+        out.append("file name")
+    if path.suffix.lower() == ".pdf" and path.is_file():
+        doc = fitz.open(path)
+        for pg in doc:
+            t = pg.get_text("text")
+            for m in rx.finditer(t):
+                kind = "scanned page text layer" if pg.get_images() and len(pg.get_text("words")) and \
+                    all(w[3] - w[1] < 8 for w in pg.get_text("words")[:20]) else "typed text"
+                ctx = _mask(t[max(0, m.start() - 25):m.start()]) + "<<" + _shape(m.group(0)) + ">>" + _mask(t[m.end():m.end() + 25])
+                out.append(f"page {pg.number + 1}, {kind}: ...{ctx}...".replace("\n", " / "))
+                break
+            for w in pg.widgets() or []:
+                if isinstance(w.field_value, str) and rx.search(w.field_value):
+                    out.append(f"page {pg.number + 1}, form field {w.field_name!r}")
+        if any(isinstance(v, str) and rx.search(v) for v in (doc.metadata or {}).values()):
+            out.append("document properties (author, title...)")
+    return out[:6] or ["somewhere not identified"]
+
+
 def leak_check(root: Path, rd: Redactor) -> list[dict]:
     """Search every redacted file, and every file name, for every original value."""
     leaks = []
@@ -607,7 +645,8 @@ def leak_check(root: Path, rd: Redactor) -> list[dict]:
         hay = p.name.lower() + "\n" + (redacted_text_of(p).lower() if p.is_file() else "")
         for term, ph in rd.key.terms.items():
             if re.search(r"(?<![^\W_])" + re.escape(term) + r"(?![^\W_])", hay):
-                leaks.append({"file": str(p.relative_to(root)), "found": ph})
+                leaks.append({"file": str(p.relative_to(root)), "found": ph, "shape": _shape(term),
+                              "where": leak_where(p, term) if p.is_file() else ["folder name"]})
     return leaks
 
 

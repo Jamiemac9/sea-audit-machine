@@ -212,6 +212,7 @@ def redact(bid: str) -> dict:
             r["error"] = ("No documents could be read for this resident, so there is nothing to audit."
                           + (" Held back: " + "; ".join(why) if why else " The folder was empty."))
     b["report"] = {"counts": rep["counts"], "held_back": held, "leaks": rep["leaks"],
+                   "leak_detail": rep.get("leak_detail", []),
                    "possible_names": rep["possible_names"][:200], "ner": rep["ner"], "ocr": rep["ocr"],
                    "office": rep["office"],
                    "files": [{k: f.get(k) for k in ("resident", "file", "as", "status", "reason")} for f in rep["files"]]}
@@ -239,6 +240,7 @@ def _withhold_leaks(rep: dict, out: Path, private: Path):
         if hit:
             f.update(status="held back", reason=f"{', '.join(hit[:4])} could not be hidden in it, so Claude did not see it")
     rep["withheld"] = sorted(bad)
+    rep["leak_detail"] = [{k: lk.get(k) for k in ("file", "found", "shape", "where")} for lk in rep["leaks"]]
     # anything still showing (for example in a folder name) does stop the round
     rep["leaks"] = [lk for lk in rep["leaks"] if not (out / lk["file"]).is_file() and (out / lk["file"]).exists()]
 
