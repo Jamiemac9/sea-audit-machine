@@ -235,8 +235,9 @@ def _withhold_leaks(rep: dict, out: Path, private: Path):
         if not f.get("as") or f.get("status") == "held back":
             continue
         base = (Path(f["resident"].strip("[]")) / Path(f["as"]).with_suffix("")).as_posix()
-        if any(Path(b).as_posix().startswith(base) for b in bad):
-            f.update(status="held back", reason="a name or detail could not be hidden in it, so Claude did not see it")
+        hit = sorted({lk["found"] for lk in rep["leaks"] if Path(lk["file"]).as_posix().startswith(base)})
+        if hit:
+            f.update(status="held back", reason=f"{', '.join(hit[:4])} could not be hidden in it, so Claude did not see it")
     rep["withheld"] = sorted(bad)
     # anything still showing (for example in a folder name) does stop the round
     rep["leaks"] = [lk for lk in rep["leaks"] if not (out / lk["file"]).is_file() and (out / lk["file"]).exists()]

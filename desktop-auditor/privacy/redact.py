@@ -379,7 +379,7 @@ def _ocr_redact_image(img: Image.Image, rd: Redactor, with_lines: bool = False, 
               data["top"][i] + data["height"][i], data["text"][i]) for i in range(len(data["text"]))
              if data["text"][i].strip()]
     text = " ".join(w[4] for w in words)
-    rd.learn(text)
+    rd.learn(_ocr_lines(data))   # same layout as pass 1, so nothing new is learned part-way
     draw = ImageDraw.Draw(img)
     n = 0
     for a, b, ph in rd.spans(text):
@@ -490,59 +490,67 @@ def redact_round(round_dirs: dict[str, Path], out_root: Path, private: Path,
             rd.learn(p.stem.replace("_", " "))
             rd.learn(extract_text(p))
             ocr_learn(p, rd)
-    report = {"files": [], "ner": rd.use_ner, "ocr": _OCR, "office": bool(soffice())}
-    tmp = Path(tempfile.mkdtemp())
-    done = 0
-    for name, fl in files.items():
-        res_out = out_root / rd.residents[name].strip("[]")
-        for p in fl:
-            done += 1
-            _say(f"Hiding names: file {done} of {total}")
-            rel = p.relative_to(round_dirs[name])
-            rel_red = Path(*[rd.text(part.replace("_", " ")) for part in rel.parts])
-            entry = {"resident": rd.residents[name], "file": str(rel), "as": str(rel_red)}
-            dst = res_out / rel_red
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            ext = p.suffix.lower()
-            try:
-                if ext == ".pdf":
-                    entry.update(redact_pdf(p, dst, rd))
-                    entry["original_pdf"] = str(p)
-                elif ext == ".docx":
-                    meta = docx_metadata(p)
-                    pdf = docx_to_pdf(p, tmp)
-                    if pdf:
-                        keep = private / "originals" / res_out.name / rel.with_suffix(".pdf")
-                        keep.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy(pdf, keep)
-                        entry.update(redact_pdf(pdf, dst.with_suffix(".pdf"), rd))
-                        entry["as"] = str(rel_red.with_suffix(".pdf"))
-                        entry["original_pdf"] = str(keep)
-                    else:
+    for attempt in (1, 2):   # pass 2: hide. If a new name turned up while hiding, hide again with the full list
+        known = len(rd.key.terms)
+        if attempt == 2:
+            shutil.rmtree(out_root, ignore_errors=True)
+        report = {"files": [], "ner": rd.use_ner, "ocr": _OCR, "office": bool(soffice())}
+        tmp = Path(tempfile.mkdtemp())
+        done = 0
+        for name, fl in files.items():
+            res_out = out_root / rd.residents[name].strip("[]")
+            for p in fl:
+                done += 1
+                _say(f"Hiding names: file {done} of {total}")
+                rel = p.relative_to(round_dirs[name])
+                rel_red = Path(*[rd.text(part.replace("_", " ")) for part in rel.parts])
+                entry = {"resident": rd.residents[name], "file": str(rel), "as": str(rel_red)}
+                dst = res_out / rel_red
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                ext = p.suffix.lower()
+                try:
+                    if ext == ".pdf":
+                        entry.update(redact_pdf(p, dst, rd))
+                        entry["original_pdf"] = str(p)
+                    elif ext == ".docx":
+                        meta = docx_metadata(p)
+                        pdf = docx_to_pdf(p, tmp)
+                        if pdf:
+                            keep = private / "originals" / res_out.name / rel.with_suffix(".pdf")
+                            keep.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copy(pdf, keep)
+                            entry.update(redact_pdf(pdf, dst.with_suffix(".pdf"), rd))
+                            entry["as"] = str(rel_red.with_suffix(".pdf"))
+                            entry["original_pdf"] = str(keep)
+                        else:
+                            dst.with_suffix(".txt").write_text(rd.text(extract_text(p)), encoding="utf-8")
+                            entry.update(status="text only", reason="LibreOffice not installed, layout not kept")
+                        if meta:  # who last saved it and when is evidence: keep it, redacted
+                            dst.with_suffix(".metadata.txt").write_text(
+                                "\n".join(f"{k}: {rd.text(v)}" for k, v in meta.items()), encoding="utf-8")
+                    elif ext in TEXT_EXT or ext in HTML_EXT:
                         dst.with_suffix(".txt").write_text(rd.text(extract_text(p)), encoding="utf-8")
-                        entry.update(status="text only", reason="LibreOffice not installed, layout not kept")
-                    if meta:  # who last saved it and when is evidence: keep it, redacted
-                        dst.with_suffix(".metadata.txt").write_text(
-                            "\n".join(f"{k}: {rd.text(v)}" for k, v in meta.items()), encoding="utf-8")
-                elif ext in TEXT_EXT or ext in HTML_EXT:
-                    dst.with_suffix(".txt").write_text(rd.text(extract_text(p)), encoding="utf-8")
-                    entry["status"] = "redacted"
-                elif ext in IMG_EXT:
-                    if _OCR:
-                        img = Image.open(p).convert("RGB")  # re-saving drops EXIF (location, device)
-                        img, n, _ = _ocr_redact_image(img, rd, key=(str(p), -1))
-                        img.save(dst.with_suffix(".png"))
-                        entry.update(status="redacted", boxes=n, note="photo: names written in it are only caught if OCR can read them")
+                        entry["status"] = "redacted"
+                    elif ext in IMG_EXT:
+                        if _OCR:
+                            img = Image.open(p).convert("RGB")  # re-saving drops EXIF (location, device)
+                            img, n, _ = _ocr_redact_image(img, rd, key=(str(p), -1))
+                            img.save(dst.with_suffix(".png"))
+                            entry.update(status="redacted", boxes=n, note="photo: names written in it are only caught if OCR can read them")
+                        else:
+                            entry.update(status="held back", reason="photo and OCR (Tesseract) is not installed")
                     else:
-                        entry.update(status="held back", reason="photo and OCR (Tesseract) is not installed")
-                else:
-                    entry.update(status="held back", reason=f"{ext or 'no extension'} files are not redacted")
-            except Exception as e:
-                entry.update(status="held back", reason=f"could not redact: {type(e).__name__}")
-                for leftover in dst.parent.glob(dst.stem + "*"):
-                    leftover.unlink(missing_ok=True)
-            report["files"].append(entry)
-    shutil.rmtree(tmp, ignore_errors=True)
+                        entry.update(status="held back", reason=f"{ext or 'no extension'} files are not redacted")
+                except Exception as e:
+                    entry.update(status="held back", reason=f"could not redact: {type(e).__name__}")
+                    for leftover in dst.parent.glob(dst.stem + "*"):
+                        leftover.unlink(missing_ok=True)
+                report["files"].append(entry)
+        shutil.rmtree(tmp, ignore_errors=True)
+        if attempt == 1 and len(rd.key.terms) == known:
+            break
+        if attempt == 1 and leak_check(out_root, rd) == []:
+            break
     _OCR_CACHE.clear()
     report["leaks"] = leak_check(out_root, rd)
     report["possible_names"] = possible_names(out_root) if rd.use_ner else []
