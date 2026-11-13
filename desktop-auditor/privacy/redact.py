@@ -116,7 +116,8 @@ def norm(s: str) -> str:
 
 
 def tokens(s: str) -> list[str]:
-    return [t for t in re.findall(r"[a-z0-9@.+'-]+", s.lower()) if t.strip(".'-")]
+    # letters of any alphabet (Zoë, Müller, Şahin), not just a to z
+    return [t for t in re.findall(r"(?:[^\W_]|[@.+'-])+", s.lower()) if t.strip(".'-")]
 
 
 @dataclass
@@ -217,9 +218,9 @@ class Redactor:
                 ph = self.key.terms.get(norm(m.group(0))) or self.key.add(m.group(0), kind)
                 found.append((m.start(), m.end(), ph))
         for term, ph in self.key.terms.items():
-            if " " not in term and not re.fullmatch(r"[a-z'-]+", term):
+            if " " not in term and not re.fullmatch(r"(?:[^\W\d_]|['-])+", term) and not ph.startswith(("[PERSON", "[RESIDENT")):
                 continue  # pattern values are handled above
-            rx = re.compile(r"(?<![a-z0-9])" + r"\s+".join(map(re.escape, term.split())) + r"(?![a-z0-9])")
+            rx = re.compile(r"(?<![^\W_])" + r"\s+".join(map(re.escape, term.split())) + r"(?![^\W_])")
             for m in rx.finditer(low):
                 found.append((m.start(), m.end(), ph))
         found.sort(key=lambda s: (s[0], -(s[1] - s[0])))
@@ -319,7 +320,7 @@ def _sweep(page, rd, rounds: int = 3) -> int:
     for _ in range(rounds):
         low = page.get_text("text").lower()
         left = [(t, ph) for t, ph in rd.key.terms.items()
-                if re.search(r"(?<![a-z0-9])" + re.escape(t) + r"(?![a-z0-9])", low)]
+                if re.search(r"(?<![^\W_])" + re.escape(t) + r"(?![^\W_])", low)]
         if not left:
             break
         added = 0
@@ -327,7 +328,7 @@ def _sweep(page, rd, rounds: int = 3) -> int:
             for r in page.search_for(term):
                 ctx = page.get_text("text", clip=fitz.Rect(r.x0 - 8, r.y0 + 1, r.x1 + 8, r.y1 - 1)).lower()
                 ctx = re.sub(r"\s+", " ", ctx)
-                if re.search(r"(?<![a-z0-9])" + re.escape(term) + r"(?![a-z0-9])", ctx) or len(term) >= 6:
+                if re.search(r"(?<![^\W_])" + re.escape(term) + r"(?![^\W_])", ctx) or len(term) >= 6:
                     page.add_redact_annot(r, text=ph, fontsize=6, fill=(0.88, 0.88, 0.88))
                     added += 1
         if not added:
@@ -605,7 +606,7 @@ def leak_check(root: Path, rd: Redactor) -> list[dict]:
     for p in root.rglob("*"):
         hay = p.name.lower() + "\n" + (redacted_text_of(p).lower() if p.is_file() else "")
         for term, ph in rd.key.terms.items():
-            if re.search(r"(?<![a-z0-9])" + re.escape(term) + r"(?![a-z0-9])", hay):
+            if re.search(r"(?<![^\W_])" + re.escape(term) + r"(?![^\W_])", hay):
                 leaks.append({"file": str(p.relative_to(root)), "found": ph})
     return leaks
 
