@@ -495,7 +495,21 @@ def round_ready_for_feedback(b: dict) -> bool:
     rs = b["residents"].values()
     return (feedback_template_path() is not None and any(r["status"] == "done" for r in rs)
             and not any(r["status"] in ("queued", "running", "stopping") for r in rs)
-            and b.get("feedback", {}).get("status") in (None, "waiting"))
+            and _feedback_due(b))
+
+
+def _feedback_due(b: dict) -> bool:
+    """Every round gets an Overall Feedback Form. It is written once the residents are finished,
+    tried again if it failed, and rewritten if a resident was re-audited after it was written.
+    Only a form you stopped yourself is left alone."""
+    fb = b.get("feedback") or {}
+    st = fb.get("status")
+    if st in (None, "waiting", "failed"):
+        return True
+    if st == "done":
+        last = max((r.get("finished") or "" for r in b["residents"].values() if r["status"] == "done"), default="")
+        return bool(fb.get("finished")) and last > fb["finished"]
+    return False
 
 
 def run_feedback(bid: str, on_run=None) -> dict:
