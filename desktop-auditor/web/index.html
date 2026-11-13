@@ -407,7 +407,7 @@ function renderRound() {
       <div id="rCheck"></div>
       <div class="panel" style="margin-top:18px" id="rRes"></div>
       <div class="split" style="margin-top:18px"><div class="panel" id="rScores"></div><div class="panel" id="rFeedback"></div></div>
-      <div class="row" style="margin-top:22px"><button class="btn danger small" onclick="delRound()">Delete this round</button>
+      <div class="row" style="margin-top:22px"><button class="btn danger small" onclick="delRound(this)">Delete this round</button>
         <span class="muted">Removes the copies, the hidden version and the key from this computer. Finished forms stay in Completed Audits.</span></div>
     </div>`;
     for (const k of ['rTitle','rSub','rTrack','rRes','rScores','rFeedback','rReport','rErr']) delete cache[k];
@@ -417,7 +417,7 @@ function renderRound() {
   put('rTrack', bigTrack(b));
   put('rReport', (b.has_report ? `<a class="btn" target="_blank" href="/api/batches/${b.id}/download-round?what=report">Open delivered report</a>` : '')
     + (!Object.values(b.residents).some(r => ['running','stopping'].includes(r.status)) && b.status !== 'redacting'
-       ? `<button class="btn quiet" onclick="restartRound()" title="Builds the round again from the files you gave it">Start again</button>` : ''));
+       ? `<button class="btn quiet" onclick="restartRound(this)" title="Builds the round again from the files you gave it">Start again</button>` : ''));
   put('rErr', b.status === 'failed' ? `<div class="panel" style="margin-top:18px">${whyBox('This round could not be prepared', b.error || 'Something went wrong while hiding names.')}</div>` : '');
   renderCheck(b);
   const rs = Object.entries(b.residents);
@@ -533,13 +533,23 @@ async function act(a, L) { try { await post(`/api/batches/${D.id}/${a}/${L}`); t
 async function fbAct(a) { try { await post(`/api/batches/${D.id}/feedback/${a}`); toast(a === 'stop' ? 'Stopping.' : 'Writing the Overall Feedback Form.') } catch(e) { toast(e.message) } tick() }
 async function openLocal(L, folder) { try { await post(`/api/batches/${D.id}/open/${L}?folder=${folder}`) } catch(e) { toast(e.message) } }
 async function openOut(what) { try { await post(`/api/batches/${D.id}/open-round?what=${what}`) } catch(e) { toast(e.message) } }
-async function restartRound() {
-  if (!confirm('Start this round again from the files it was given? Zips are opened and residents split up. Finished forms already saved stay where they are.')) return;
-  try { const r = await post(`/api/batches/${D.id}/restart`); location.hash = '#/round/' + r.id; toast('Started again.') } catch(e) { toast(e.message) }
+// Ask on the page itself: pop-up confirm boxes don't show in every browser panel
+function sure(btn, ask) {
+  if (btn.dataset.armed) return true;
+  const was = btn.textContent;
+  btn.dataset.armed = '1'; btn.textContent = ask; btn.classList.add('mark');
+  setTimeout(() => { delete btn.dataset.armed; btn.textContent = was; btn.classList.remove('mark') }, 5000);
+  return false;
 }
-async function delRound() {
-  if (!confirm('Delete this round from this computer? The copies, the hidden version and the key are removed. Finished forms in Completed Audits stay.')) return;
-  try { await api(`/api/batches/${D.id}`, {method:'DELETE'}) } catch(e) { return toast(e.message) }
+async function restartRound(btn) {
+  if (!sure(btn, 'Click again to start again')) return;
+  btn.disabled = true; btn.textContent = 'Starting again...';
+  try { const r = await post(`/api/batches/${D.id}/restart`); location.hash = '#/round/' + r.id; toast('Started again.') } catch(e) { btn.disabled = false; btn.textContent = 'Start again'; toast(e.message) }
+}
+async function delRound(btn) {
+  if (!sure(btn, 'Click again to delete (finished forms stay)')) return;
+  btn.disabled = true;
+  try { await api(`/api/batches/${D.id}`, {method:'DELETE'}) } catch(e) { btn.disabled = false; return toast(e.message) }
   location.hash = '#/'; toast('Round deleted.');
 }
 
@@ -592,7 +602,7 @@ $('refFiles').onchange = async e => { const fd = new FormData(); for (const f of
 async function delRef(n) { await api('/api/reference/'+n, {method:'DELETE'}); toast('Removed.'); tick() }
 async function claudeLogin() {
   try { await post('/api/login') } catch(e) { return toast(e.message) }
-  alert('A window has opened to sign Claude in. A browser page asks you to log in to your Claude account. When it says you are logged in, close that window. This page updates within a few seconds.');
+  toast('A window has opened to sign Claude in. Log in there, then close it. This page updates by itself.');
 }
 
 // ---------- routing and the loop ----------
