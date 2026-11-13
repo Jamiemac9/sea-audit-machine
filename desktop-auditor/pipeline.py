@@ -178,6 +178,17 @@ def redact(bid: str) -> dict:
     dirs = {name: d / "private" / "upload" / name for name in b["residents"]}
     names = list(dict.fromkeys(settings()["hide_names"] + b.get("extra_names", [])))
     try:
+        prog = d / "private" / "progress.txt"
+        state = {"file": ""}
+
+        def say(msg):
+            if msg.startswith(("Finding", "Hiding")):
+                state["file"] = msg
+            else:
+                msg = f"{state['file']}, {msg}"
+            prog.write_text(msg, encoding="utf-8")
+        import privacy.redact as _r
+        _r.PROGRESS = say
         rep = redact_round(dirs, out, d / "private", names)
     except Exception as e:
         b["status"] = "failed"

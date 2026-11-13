@@ -159,6 +159,15 @@ def again(bid, kind, name):
     threading.Timer(wait, tasks.put, args=((kind, bid, name),)).start()
 
 
+def _progress(b: dict) -> str:
+    if b.get("status") != "redacting":
+        return ""
+    try:
+        return (pl.bdir(b["id"]) / "private" / "progress.txt").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
 def _mark_failed(bid, kind, name, why):
     """Nothing is ever left showing 'running' after its job has ended."""
     b = pl.load(bid)
@@ -351,6 +360,7 @@ def state():
                         "error": b.get("error"), "feedback_error": fb.get("error"),
                         "has_scores": bool(b.get("scorebook")), "folder_name": b.get("folder_name"),
                         "feedback_note": fb.get("note"), "has_report": pl.report_path(b).exists(),
+                        "progress": _progress(b),
                         "residents": [{"name": n, "label": r.get("label"), "status": r["status"],
                                        "rating": r.get("rating"), "total": r.get("total"),
                                        "finished": r.get("finished"), "started": r.get("started"),
@@ -626,6 +636,7 @@ def batch_detail(bid: str):
     b["feedback"] = fb
     b["feedback_template"] = bool(pl.feedback_template_path())
     b["has_report"] = pl.report_path(b).exists()
+    b["progress"] = _progress(b)
     return b
 
 

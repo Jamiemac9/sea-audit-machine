@@ -313,7 +313,7 @@ function roundLine(b) {
   const steps = live.reduce((a, r) => a + stopOf(b.status, r).i + (r.status === 'done' ? 1 : 0), 0);
   const pct = !busy && b.status !== 'check' ? 100 : live.length ? Math.round(steps / (live.length * 5) * 100) : 0;
   const retrying = rs.some(r => r.note) || b.feedback_note;
-  const word = b.status === 'redacting' ? 'Hiding names on this computer'
+  const word = b.status === 'redacting' ? `Hiding names on this computer${b.progress ? ': ' + esc(b.progress) : ''}`
     : b.status === 'check' ? 'Waiting for your check'
     : busy ? (retrying ? `${d} of ${live.length} done. Trying again on one that stopped` : `${d} of ${live.length} done. Working`)
     : `${d} of ${live.length} delivered${b.feedback === 'done' ? ', with the feedback form' : ''}`;
@@ -463,11 +463,12 @@ function renderRound() {
 
 function renderCheck(b) {
   const rep = b.report;
-  const sig = JSON.stringify([b.status, rep && rep.counts, rep && rep.leaks.length, rep && (rep.possible_names||[]).length, (rep && rep.held_back || []).length, b.preview.length]);
+  const sig = JSON.stringify([b.status, b.progress, rep && rep.counts, rep && rep.leaks.length, rep && (rep.possible_names||[]).length, (rep && rep.held_back || []).length, b.preview.length]);
   const box = $('rCheck');
   if (box.dataset.sig === sig) return;
   box.dataset.sig = sig;
-  if (b.status === 'redacting') { box.innerHTML = `<div class="panel" style="margin-top:18px"><h2>Hiding names on this computer</h2><p class="muted">Names, addresses, dates of birth and ID numbers are being swapped for labels. Nothing has been sent anywhere. This takes a minute or two.</p></div>`; return }
+  if (b.status === 'redacting') { box.innerHTML = `<div class="panel" style="margin-top:18px"><h2>Hiding names on this computer</h2><p class="muted">Names, addresses, dates of birth and ID numbers are being swapped for labels. Nothing has been sent anywhere. Scanned files are read page by page, so a big file can take a while.</p>
+    <p><b>${esc(b.progress || 'Starting')}</b></p></div>`; return }
   if (!rep || !['check','blocked'].includes(b.status)) {
     box.innerHTML = rep ? `<details class="panel" style="margin-top:18px"><summary style="cursor:pointer; font-weight:700">What was hidden before anything went to Claude</summary><div class="facts">${hiddenFacts(rep)}</div></details>` : ''; return }
   const pn = [...new Set((rep.possible_names||[]).map(p => p.text))].slice(0, 60);

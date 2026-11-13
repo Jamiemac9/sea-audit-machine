@@ -260,12 +260,63 @@ def _word_hits(words, needle_tokens):
     return hits
 
 
+_OCR_CACHE: dict = {}   # (file, page) -> Tesseract result, read once in pass 1 and reused in pass 2
+
+
+def _ocr_data(key, img):
+    if key is not None and key in _OCR_CACHE:
+        return _OCR_CACHE[key]
+    data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+    if key is not None:
+        _OCR_CACHE[key] = data
+    return data
+
+
+def _ocr_lines(data) -> str:
+    rows: dict = {}
+    for i, t in enumerate(data["text"]):
+        if t.strip():
+            rows.setdefault((data["block_num"][i], data["par_num"][i], data["line_num"][i]), []).append(t)
+    return "\n".join(" ".join(ws) for ws in rows.values())
+
+
+def _is_scanned(page) -> bool:
+    return len(page.get_text("text").strip()) < 40 and bool(page.get_images())
+
+
+def _page_image(page):
+    pix = page.get_pixmap(dpi=200)
+    return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+
+
+def ocr_learn(path: Path, rd) -> int:
+    """Pass 1 for scans and photos: read them now, so names that only appear in handwriting or
+    on scanned pages are known before any page is hidden. Returns pages read."""
+    if not _OCR:
+        return 0
+    ext, n = path.suffix.lower(), 0
+    try:
+        if ext == ".pdf":
+            doc = fitz.open(path)
+            pages = [pg for pg in doc if _is_scanned(pg)]
+            for i, pg in enumerate(pages, 1):
+                _say(f"reading scanned page {i} of {len(pages)}")
+                rd.learn(_ocr_lines(_ocr_data((str(path), pg.number), _page_image(pg))))
+                n += 1
+        elif ext in IMG_EXT:
+            rd.learn(_ocr_lines(_ocr_data((str(path), -1), Image.open(path).convert("RGB"))))
+            n = 1
+    except Exception:
+        pass
+    return n
+
+
 def redact_pdf(src: Path, dst: Path, rd: Redactor) -> dict:
     doc = fitz.open(src)
     boxes, scanned_pages = 0, []
     for page in doc:
         text = page.get_text("text")
-        if len(text.strip()) < 40 and page.get_images():
+        if _is_scanned(page):
             scanned_pages.append(page.number)
             continue
         words = page.get_text("words")
@@ -285,8 +336,9 @@ def redact_pdf(src: Path, dst: Path, rd: Redactor) -> dict:
         if not _OCR:
             doc.close()
             return {"status": "held back", "reason": "scanned pages and OCR (Tesseract) is not installed"}
-        for pno in scanned_pages:
-            boxes += _ocr_redact_page(doc, pno, rd)
+        for i, pno in enumerate(scanned_pages, 1):
+            _say(f"hiding names on scanned page {i} of {len(scanned_pages)}")
+            boxes += _ocr_redact_page(doc, pno, rd, key=(str(src), pno))
     meta = {k: (rd.text(v) if isinstance(v, str) else v) for k, v in (doc.metadata or {}).items()}
     doc.set_metadata(meta)
     doc.del_xml_metadata()
@@ -294,12 +346,11 @@ def redact_pdf(src: Path, dst: Path, rd: Redactor) -> dict:
     return {"status": "redacted", "boxes": boxes, "ocr_pages": len(scanned_pages)}
 
 
-def _ocr_redact_page(doc, pno: int, rd: Redactor) -> int:
+def _ocr_redact_page(doc, pno: int, rd: Redactor, key=None) -> int:
     """Rasterise a scanned page, OCR it, black out matched words, replace the page with the image."""
     page = doc[pno]
-    pix = page.get_pixmap(dpi=200)
-    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-    img, n, text, lines = _ocr_redact_image(img, rd, with_lines=True)
+    img = _page_image(page)
+    img, n, text, lines = _ocr_redact_image(img, rd, with_lines=True, key=key)
     rect = page.rect
     doc.delete_page(pno)
     new = doc.new_page(pno, width=rect.width, height=rect.height)
@@ -321,9 +372,9 @@ def _text_layer(page, text: str):
     page.insert_textbox(page.rect, text[:20000], fontsize=1, render_mode=3)
 
 
-def _ocr_redact_image(img: Image.Image, rd: Redactor, with_lines: bool = False):
+def _ocr_redact_image(img: Image.Image, rd: Redactor, with_lines: bool = False, key=None):
     from PIL import ImageDraw
-    data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+    data = _ocr_data(key, img)
     words = [(data["left"][i], data["top"][i], data["left"][i] + data["width"][i],
               data["top"][i] + data["height"][i], data["text"][i]) for i in range(len(data["text"]))
              if data["text"][i].strip()]
@@ -338,11 +389,7 @@ def _ocr_redact_image(img: Image.Image, rd: Redactor, with_lines: bool = False):
             draw.text((r.x0 + 2, r.y0), ph, fill="white", font=_label_font(max(10, int((r.y1 - r.y0) * 0.6))))
             n += 1
     if with_lines:   # the same words, kept in their lines, for the page's text layer
-        rows: dict = {}
-        for i, t in enumerate(data["text"]):
-            if t.strip():
-                rows.setdefault((data["block_num"][i], data["par_num"][i], data["line_num"][i]), []).append(t)
-        return img, n, text, "\n".join(" ".join(ws) for ws in rows.values())
+        return img, n, text, _ocr_lines(data)
     return img, n, text
 
 
@@ -416,6 +463,17 @@ def extract_text(path: Path) -> str:
     return ""
 
 
+PROGRESS = None   # set by the app to show what redaction is doing
+
+
+def _say(msg: str):
+    if PROGRESS:
+        try:
+            PROGRESS(msg)
+        except Exception:
+            pass
+
+
 def redact_round(round_dirs: dict[str, Path], out_root: Path, private: Path,
                  other_names: list[str] = (), use_ner: bool = True) -> dict:
     """round_dirs: resident name -> their folder. Writes the redacted copy to out_root (the
@@ -423,15 +481,23 @@ def redact_round(round_dirs: dict[str, Path], out_root: Path, private: Path,
     rd = Redactor(list(round_dirs), other_names, use_ner)
     files = {name: sorted(p for p in d.rglob("*") if p.is_file() and not p.name.startswith((".", "~$")))
              for name, d in round_dirs.items()}
+    total = sum(len(fl) for fl in files.values())
+    done = 0
     for fl in files.values():          # pass 1: learn names and identifiers across the round
         for p in fl:
+            done += 1
+            _say(f"Finding names: file {done} of {total}")
             rd.learn(p.stem.replace("_", " "))
             rd.learn(extract_text(p))
+            ocr_learn(p, rd)
     report = {"files": [], "ner": rd.use_ner, "ocr": _OCR, "office": bool(soffice())}
     tmp = Path(tempfile.mkdtemp())
+    done = 0
     for name, fl in files.items():
         res_out = out_root / rd.residents[name].strip("[]")
         for p in fl:
+            done += 1
+            _say(f"Hiding names: file {done} of {total}")
             rel = p.relative_to(round_dirs[name])
             rel_red = Path(*[rd.text(part.replace("_", " ")) for part in rel.parts])
             entry = {"resident": rd.residents[name], "file": str(rel), "as": str(rel_red)}
@@ -464,7 +530,7 @@ def redact_round(round_dirs: dict[str, Path], out_root: Path, private: Path,
                 elif ext in IMG_EXT:
                     if _OCR:
                         img = Image.open(p).convert("RGB")  # re-saving drops EXIF (location, device)
-                        img, n, _ = _ocr_redact_image(img, rd)
+                        img, n, _ = _ocr_redact_image(img, rd, key=(str(p), -1))
                         img.save(dst.with_suffix(".png"))
                         entry.update(status="redacted", boxes=n, note="photo: names written in it are only caught if OCR can read them")
                     else:
@@ -477,6 +543,7 @@ def redact_round(round_dirs: dict[str, Path], out_root: Path, private: Path,
                     leftover.unlink(missing_ok=True)
             report["files"].append(entry)
     shutil.rmtree(tmp, ignore_errors=True)
+    _OCR_CACHE.clear()
     report["leaks"] = leak_check(out_root, rd)
     report["possible_names"] = possible_names(out_root) if rd.use_ner else []
     report["counts"] = {}
