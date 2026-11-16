@@ -481,7 +481,7 @@ def build_scorebook(bid: str) -> Path | None:
         return None
     tabs = scorebook.tab_names([n for n, _ in done])
     rows = [{"name": n, "score": r["score"], "tab": t} for (n, r), t in zip(done, tabs)]
-    path = out_dir(b) / f"Audit Scores - {safe_name(b['ma'] or 'Round')}.xlsx"
+    path = out_dir(b) / f"Audit Scores - {safe_name(b['ma'] or b.get('folder_name') or 'Round')}.xlsx"
     try:
         scorebook.build(path, b["ma"], b["date"], rows)
     except PermissionError:  # open in Excel: save beside it instead
@@ -566,7 +566,7 @@ def run_feedback(bid: str, on_run=None) -> dict:
         fb["error"] = _readable(bid, run.error or "Claude stopped without saving the feedback form.")
         save(b)
         return fb
-    final = _unique(out_dir(b) / f"Overall Feedback Form - {safe_name(b['ma'] or 'Round')}.docx")
+    final = _unique(out_dir(b) / f"Overall Feedback Form - {safe_name(b['ma'] or b.get('folder_name') or 'Round')}.docx")
     try:
         # screenshots may come from the round's own crops or be reused from a resident's audit
         info = reidentify(redacted_out, final, d / "private", d / "claude" / "work", d / "claude" / "round")
