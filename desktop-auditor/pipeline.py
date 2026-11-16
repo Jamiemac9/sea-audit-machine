@@ -200,7 +200,7 @@ def redact(bid: str) -> dict:
         _withhold_leaks(rep, out, d / "private")
     held = [f for f in rep["files"] if f.get("status") == "held back"]
     for name, r in b["residents"].items():
-        r["label"] = key["terms"][re.sub(r"\s+", " ", name.strip().lower())]
+        r["label"] = (rep.get("residents") or {}).get(name) or key["terms"][re.sub(r"\s+", " ", name.strip().lower())]
         r["status"] = "check" if not rep["leaks"] else "blocked"
         r.pop("error", None)
         mine = [f for f in rep["files"] if f.get("resident") == r["label"]]

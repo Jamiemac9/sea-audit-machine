@@ -78,14 +78,25 @@ def compute(data: dict) -> dict:
     tenancy = (c[7] * w[7] + c[8] * w[8]) / 3
     total = round(support + needs + tenancy, 1)
     red, missing, inaccurate = (_flag(data, k) for k in ("red_gate", "critical_doc_missing", "critical_doc_inaccurate"))
+    name = {i: CRITERIA[i][0] for i in CRITERIA}
+    zeros = [name[i] for i in (1, 2, 5, 6, 7, 8) if c[i] == 0]
     if red:
-        band = "Red"
-    elif missing or any(c[i] == 0 for i in (1, 2, 5, 6, 7, 8)) or total < AMBER_BELOW:
+        band, why = "Red", "Red because of a red-gate finding: " + (_reason(data, "red_gate") or "see the audit")
+    elif missing or zeros or total < AMBER_BELOW:
         band = "Amber"
+        bits = ([f"a critical document is missing ({_reason(data, 'critical_doc_missing')})"] if missing else []) + \
+               ([f"{', '.join(zeros)} scored 0"] if zeros else []) + \
+               ([f"the score is {total}, under {AMBER_BELOW}"] if total < AMBER_BELOW else [])
+        why = "Amber because " + "; ".join(bits)
     elif total >= GOLD_AT and min(c[1], c[2], c[3], c[4]) >= 2 and not inaccurate and c[7] >= 2:
-        band = "Gold"
+        band, why = "Gold", f"Gold: {total}/100 with every support criterion at 2 or above and no inaccurate documents"
     else:
         band = "Green"
+        held = ([f"the score is {total}, under {GOLD_AT}"] if total < GOLD_AT else []) + \
+               ([f"{name[i]} scored {c[i]}" for i in (1, 2, 3, 4) if c[i] < 2]) + \
+               (["a critical document is inaccurate"] if inaccurate else []) + \
+               ([f"{name[7]} scored {c[7]}"] if c[7] < 2 else [])
+        why = "Green, not Gold, because " + "; ".join(held or ["it did not meet every Gold condition"])
     ov = data.get("override") or None
     if ov and ov.get("band") not in BANDS:
         raise ValueError(f"override band must be one of {BANDS}")
@@ -96,7 +107,16 @@ def compute(data: dict) -> dict:
         "total": total, "formula_band": band, "final_band": ov["band"] if ov else band,
         "red_gate": red, "critical_doc_missing": missing, "critical_doc_inaccurate": inaccurate,
         "override": ov,
+        "band_reason": (f"{ov['band']} by the auditor's decision: {ov['reason']} (the formula gave {band}: {why})"
+                        if ov else why),
+        "lowest": [{"criterion": name[i], "score": c[i], "reason": ((data.get("criteria") or {}).get(str(i)) or {}).get("reason", "")}
+                   for i in sorted(c, key=lambda i: (c[i], -CRITERIA[i][2]))[:3]],
     }
+
+
+def _reason(data, key):
+    v = data.get(key)
+    return (v.get("reason") or "").strip() if isinstance(v, dict) else ""
 
 
 def main(path):
@@ -108,6 +128,7 @@ def main(path):
     print(f"Score {res['total']}/100 (support {res['support']}/50, needs and planning {res['needs']}/30, "
           f"tenancy and safety {res['tenancy']}/20). Formula band {res['formula_band']}; "
           f"final band {res['final_band']}{' (override)' if res['override'] else ''}.")
+    print("Why: " + res["band_reason"])
 
 
 if __name__ == "__main__":
