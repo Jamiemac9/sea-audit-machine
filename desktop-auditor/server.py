@@ -546,7 +546,7 @@ def looks_like_several(root: Path) -> bool:
     """A property folder holds one folder per resident and no loose documents. A resident's
     own folder holds documents, or sub-folders named for documents (Sessions, Risk, 2026...)."""
     files, dirs = _kids(root)
-    if files or len(dirs) < 2:
+    if len(dirs) < 2 or len(files) > len(dirs):   # more loose documents than folders: one resident's file
         return False
     named_like_documents = sum(bool(DOC_WORDS.search(d.name)) for d in dirs)
     return named_like_documents < len(dirs) / 2
@@ -564,11 +564,23 @@ def _batch_from_root(root: Path, several, ma: str, date: str, follow_up: bool, n
     unpack_zips(root)   # anything that can't be opened stays as it is and is listed as held back, with why
     dropped_name = root.name
     files, dirs = _kids(root)
+    # look through folders that only wrap another folder ("Resident" > "27 Kenilworth Audit" > residents)
+    while not files and len(dirs) == 1 and (several or looks_like_several(dirs[0]) or not DOC_WORDS.search(dirs[0].name)):
+        root = dirs[0]
+        if dropped_name.startswith("_upload_") or dropped_name == "Resident":
+            dropped_name = root.name
+        files, dirs = _kids(root)
     if several is None:
         several = looks_like_several(root)
-    if not several and not files and len(dirs) == 1 and not DOC_WORDS.search(dirs[0].name):
-        root = dirs[0]  # a folder holding just one resident's folder
     groups = (sorted(_kids(root)[1]) if several else [root])
+    if several and files:
+        # property-level papers next to the resident folders (resident list, licence, certificates)
+        # go into every resident's file, so each audit and the feedback form can see them
+        for g in groups:
+            shared = g / "Property documents"
+            shared.mkdir(exist_ok=True)
+            for f in files:
+                shutil.copy2(f, shared / f.name)
     if not groups:
         raise HTTPException(400, "No resident folders found inside that folder.")
     if not any(f.is_file() for g in groups for f in g.rglob("*")):
