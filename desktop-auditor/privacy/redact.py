@@ -162,7 +162,9 @@ class Redactor:
         self.residents = {}
         parts_seen: dict[str, set] = {}
         for r in residents:
-            ph = self.key.add(r, "RESIDENT")
+            # a folder called "Resident" or "File 1" still gets its own label
+            ph = self.key.add(r, "RESIDENT") or self.key.label("RESIDENT")
+            self.key.display.setdefault(ph, r.strip())
             self.residents[r] = ph
             for p in tokens(r):
                 if len(p) >= 3:
@@ -522,7 +524,7 @@ def redact_round(round_dirs: dict[str, Path], out_root: Path, private: Path,
         known = len(rd.key.terms)
         if attempt == 2:
             shutil.rmtree(out_root, ignore_errors=True)
-        report = {"files": [], "ner": rd.use_ner, "ocr": _OCR, "office": bool(soffice())}
+        report = {"files": [], "ner": rd.use_ner, "ocr": _OCR, "office": bool(soffice()), "residents": dict(rd.residents)}
         tmp = Path(tempfile.mkdtemp())
         done = 0
         for name, fl in files.items():
@@ -568,7 +570,10 @@ def redact_round(round_dirs: dict[str, Path], out_root: Path, private: Path,
                         else:
                             entry.update(status="held back", reason="photo and OCR (Tesseract) is not installed")
                     else:
-                        entry.update(status="held back", reason=f"{ext or 'no extension'} files are not redacted")
+                        entry.update(status="held back", reason=(
+                            "this archive could not be opened here: unzip it in File Explorer and drop the folder"
+                            if ext in (".zip", ".7z", ".rar", ".tar", ".gz", ".tgz") else
+                            f"{ext or 'no extension'} files can't be read, so Claude did not see it"))
                 except Exception as e:
                     entry.update(status="held back", reason=f"could not redact: {type(e).__name__}")
                     for leftover in dst.parent.glob(dst.stem + "*"):

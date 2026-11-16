@@ -47,6 +47,19 @@ def main():
         odd = tmp / "odd"; odd.mkdir(); (odd / "notes.xyz").write_bytes(b"\x00\x01")
         zip_dir(odd, prop / "Una Unread.zip", inner=False)
 
+        # a single .7z dropped on its own, as a browser upload with no folder name
+        import py7zr
+        with py7zr.SevenZipFile(tmp / "27 Example Audit.7z", "w") as a7:
+            a7.writeall(dirs["Sam Sample"], arcname="27 Example Audit")
+        sid = ta.call("/api/batches", files=[("files", ("27 Example Audit.7z", (tmp / "27 Example Audit.7z").read_bytes()))],
+                      data={"several": "auto"})["id"]
+        sb = ta.wait(lambda: (lambda b: b if b["status"] != "redacting" else None)(ta.call(f"/api/batches/{sid}")), 120)
+        assert sb["status"] == "approved", (sb["status"], sb.get("error"))
+        rr = next(iter(sb["residents"].values()))
+        assert rr.get("documents", 0) >= 2, rr
+        print("7z on its own:", rr["status"], rr.get("documents"), "documents")
+        ta.call(f"/api/batches/{sid}/stop/{rr['label'].strip('[]')}", data={})
+
         bid = ta.call("/api/batches/from-folder", {"path": str(prop), "ma": "Zip Agent", "several": "auto"})["id"]
         b = ta.wait(lambda: (lambda b: b if b["status"] not in ("redacting",) else None)(ta.call(f"/api/batches/{bid}")))
         names = sorted(b["residents"])

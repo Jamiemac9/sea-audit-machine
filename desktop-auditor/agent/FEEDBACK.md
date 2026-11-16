@@ -59,7 +59,9 @@ and fair, never a list of faults.
 **First audit (baseline):**
 1. Audit overview: number of files and the first line of each property address only, then
    one or two sentences on the support position across the caseload.
-2. Overall rating for the round.
+2. Overall rating for the round, with why: how the residents' bands combine into it (for
+   example "Amber: two of three files are Amber, both for missing support evidence") and the
+   one or two themes that most decided it.
 3. About this audit (one short paragraph): what was audited against, that this round sets
    the baseline, and that the next round measures movement against it.
 4. Themes, support first and documentation after, grouped across the caseload and not by
@@ -70,7 +72,12 @@ and fair, never a list of faults.
    file reference column naming the files it draws on.
 5. Best practice identified: a row at the head of each half where there is something to
    name, specific and drawn from this agent's own files, so it can be lifted across the rest.
-6. Resident ratings: each resident's band only, no "why this score" text.
+6. Resident ratings: for each resident, the band and score, then two or three plain sentences
+   on why: the rule that set the band (`band_reason` in their `score-result.json`), the
+   criteria that pulled it down or held it up (`lowest`, with each criterion's reason), and
+   the one piece of evidence that best shows it (document code and date). Someone reading
+   only this section should understand each rating without opening the Form A. Where the
+   auditor overrode the formula, say so and give their reason.
 7. Required actions and timeframes: 4-week and 8-week lists.
 8. Escalations only for a data protection, safeguarding or financial matter.
 9. What happens next: the follow-up call, and that the next audit opens with progress

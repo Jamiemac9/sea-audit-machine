@@ -105,8 +105,13 @@ def worker():
                 again(bid, "feedback", None)
             elif kind == "reference":
                 pl.refresh_reference()
-        except KeyError:
-            pass  # deleted while waiting
+        except KeyError as e:
+            if (pl.BATCHES / bid / "batch.json").exists():   # not deleted: a real error, so say so
+                try:
+                    pl.log(bid, "", f"! {type(e).__name__}: {e}")
+                    _mark_failed(bid, kind, name, f"The app hit an error: KeyError {e}")
+                except Exception:
+                    pass
         except Exception as e:
             try:
                 pl.log(bid, "", f"! {type(e).__name__}: {e}")
@@ -465,43 +470,70 @@ DOC_WORDS = re.compile(r"(?i)session|support|plan|risk|wr[-_ ]?\d|evidence|doc|l
 DUP_SUFFIX = re.compile(r"\s*[\(\[]\d+[\)\]]$|\s*-\s*copy(\s*\d+)?$|\s+copy$", re.I)
 
 
+ARCHIVES = {".zip", ".7z"}
+
+
 def unpack_zips(root: Path) -> list[str]:
-    """Open every .zip anywhere under root, in place. "Sam_File.zip" becomes a folder
+    """Open every .zip and .7z anywhere under root, in place. "Sam_File.zip" becomes a folder
     "Sam_File" next to it; "Sam_File (1).zip" goes into the same folder, so a file
-    downloaded twice is one resident, not two. Zips inside zips are opened too.
-    Returns the zips that could not be opened."""
+    downloaded twice is one resident, not two. Archives inside archives are opened too.
+    Returns the archives that could not be opened, with why."""
     bad: dict[Path, str] = {}
-    for _ in range(4):  # zips inside zips, a few levels deep
-        todo = [z for z in sorted(root.rglob("*")) if z.is_file() and z.suffix.lower() == ".zip" and z not in bad]
+    for _ in range(4):  # archives inside archives, a few levels deep
+        todo = [z for z in sorted(root.rglob("*")) if z.is_file() and z.suffix.lower() in ARCHIVES and z not in bad]
         if not todo:
             break
         for z in todo:
             try:
                 _unzip_one(z)
                 z.unlink()
-            except (zipfile.BadZipFile, RuntimeError, OSError, ValueError) as e:
-                bad[z] = f"{z.name} ({e})"
+            except Exception as e:  # a broken or password-protected archive
+                bad[z] = f"{z.name} ({type(e).__name__}: {e})"
+    for r in sorted(root.rglob("*")):
+        if r.is_file() and r.suffix.lower() in (".rar", ".tar", ".gz", ".tgz") and r not in bad:
+            bad[r] = f"{r.name} ({r.suffix} files can't be opened here: unzip it in File Explorer, or save it as a .zip)"
     return list(bad.values())
+
+
+def _archive_members(z: Path):
+    """(name inside the archive, bytes) for every file in a .zip or .7z."""
+    if z.suffix.lower() == ".zip":
+        with zipfile.ZipFile(z) as zf:
+            for i in zf.infolist():
+                if not i.is_dir():
+                    yield i.filename, zf.read(i)
+        return
+    import py7zr, tempfile
+    tmp = Path(tempfile.mkdtemp(prefix="sa-7z-"))
+    try:
+        with py7zr.SevenZipFile(z, mode="r") as a:
+            names = [n for n in a.getnames()]
+            for n in names:
+                safe_rel(n)   # refuse "../" tricks before anything is written
+            a.extractall(path=tmp)
+        for f in sorted(tmp.rglob("*")):
+            if f.is_file():
+                yield f.relative_to(tmp).as_posix(), f.read_bytes()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _unzip_one(z: Path):
     dest = z.parent / (DUP_SUFFIX.sub("", z.stem).strip() or z.stem)
-    with zipfile.ZipFile(z) as zf:
-        infos = [i for i in zf.infolist() if not i.is_dir() and not i.filename.startswith("__MACOSX")
-                 and not Path(i.filename).name.startswith((".", "~$"))]
-        rels = [safe_rel(i.filename) for i in infos]
-        # a zip that holds just one folder: use what is inside it
-        if rels and len({r.parts[0] for r in rels}) == 1 and all(len(r.parts) > 1 for r in rels):
-            rels = [Path(*r.parts[1:]) for r in rels]
-        for info, rel in zip(infos, rels):
-            out = dest / rel
-            data = zf.read(info)
-            if out.exists():
-                if out.read_bytes() == data:
-                    continue  # the same file again, from a duplicate download
-                out = out.with_name(f"{out.stem} (2){out.suffix}")
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_bytes(data)
+    items = [(n, d) for n, d in _archive_members(z)
+             if not n.startswith("__MACOSX") and not Path(n).name.startswith((".", "~$"))]
+    rels = [safe_rel(n) for n, _ in items]
+    # an archive that holds just one folder: use what is inside it
+    if rels and len({r.parts[0] for r in rels}) == 1 and all(len(r.parts) > 1 for r in rels):
+        rels = [Path(*r.parts[1:]) for r in rels]
+    for (_, data), rel in zip(items, rels):
+        out = dest / rel
+        if out.exists():
+            if out.read_bytes() == data:
+                continue  # the same file again, from a duplicate download
+            out = out.with_name(f"{out.stem} (2){out.suffix}")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(data)
 
 
 def _kids(root: Path):
@@ -529,9 +561,7 @@ def _parse_several(v):
 
 def _batch_from_root(root: Path, several, ma: str, date: str, follow_up: bool, notes: str,
                      extra_names: str, source: str | None = None) -> dict:
-    bad_zips = unpack_zips(root)
-    if bad_zips:
-        raise HTTPException(400, "Could not open: " + "; ".join(bad_zips) + ". Unzip it in File Explorer and drop the folder.")
+    unpack_zips(root)   # anything that can't be opened stays as it is and is listed as held back, with why
     dropped_name = root.name
     files, dirs = _kids(root)
     if several is None:
