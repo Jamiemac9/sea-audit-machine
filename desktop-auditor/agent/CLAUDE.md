@@ -54,8 +54,13 @@ audits. Where the skill and a reference file disagree, the skill wins.
    `"{{PY}}" "{{TOOLS}}/read_pack.py" "{{RESIDENT}}" "{{WORK}}/pack"`.
    Scanned pages were already read on this computer: their text (names swapped for labels) is
    in the text files. Do not run Tesseract or any OCR yourself, and do not install anything.
-   Start with `pack/summary.md`, then read every text file and look at every page image in
-   `pack/pages/` (ticks, signatures and blank boxes only show there). The summary's lists of
+   Start with `pack/summary.md` for the list of documents and the leads it found. Then
+   **read every document itself with the Read tool, the way a chat reads an attachment**: open
+   each PDF in `{{RESIDENT}}` directly (for a PDF over 10 pages, read it in blocks with the
+   `pages` option, for example "1-10", "11-20", until the end), and each .docx, .txt or image
+   too. Read every page, not just some: ticks, signatures, handwriting, blank boxes and dates
+   are judged from the page itself. `pack/pages/` holds small two-page previews, useful only to
+   find a page quickly; never judge from them. The summary's lists of
    reused images, repeated sentences and impossible risk scores are leads to check against
    the documents, not findings in themselves. For copying between residents, also run it on
    the round: `"{{PY}}" "{{TOOLS}}/read_pack.py" "{{ROUND}}" "{{WORK}}/round" --text-only` and read

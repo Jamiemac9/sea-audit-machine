@@ -215,8 +215,8 @@ class Run:
             "--permission-mode", "acceptEdits",
             "--add-dir", job["round"], str(Path(job["template"]).parent), job["reference"], job["work"],
         ] + sum((["--add-dir", d] for d in job.get("extra_dirs", [])), [])
-        if self.settings.get("model"):
-            cmd += ["--model", self.settings["model"]]
+        # the strongest model, as in a Claude chat, unless Settings names another
+        cmd += ["--model", self.settings.get("model") or "opus"]
         return cmd
 
     def start(self):
