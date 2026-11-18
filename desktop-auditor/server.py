@@ -928,15 +928,38 @@ def feedback_action(bid: str, action: str):
 def stop(bid: str, label: str):
     b = get_batch(bid)
     name, r = _resident(b, label)
+    _stop_one(b, name, r)
+    pl.save(b)
+    return {"ok": True}
+
+
+def _stop_one(b, name, r):
     if r["status"] == "queued":
         r["status"] = "stopped"
-        pl.save(b)
-    elif r["status"] == "running":
+        r["error"] = "You stopped this audit."
+    elif r["status"] in ("running", "stopping"):
         r["status"] = "stopping"
-        pl.save(b)
         with lock:
-            if current["where"] == (bid, name) and current["run"]:
+            if current["where"] == (b["id"], name) and current["run"]:
                 current["run"].stop()
+
+
+@app.post("/api/batches/{bid}/stop-round")
+def stop_round(bid: str):
+    """Stop everything in this round now: waiting audits are taken off the queue, the running
+    one is ended, and the feedback form won't start. Finished forms stay. Retry carries on."""
+    b = get_batch(bid)
+    for name, r in b["residents"].items():
+        _stop_one(b, name, r)
+    fb = b.get("feedback") or {}
+    if fb.get("status") in ("waiting", "queued"):
+        fb["status"] = "stopped"
+    elif fb.get("status") == "running":
+        fb["status"] = "stopping"
+        with lock:
+            if current["where"] == (bid, "_round") and current["run"]:
+                current["run"].stop()
+    pl.save(b)
     return {"ok": True}
 
 

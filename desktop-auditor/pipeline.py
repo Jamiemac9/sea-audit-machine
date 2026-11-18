@@ -349,6 +349,11 @@ def run_resident(bid: str, name: str, on_run=None) -> dict:
     r.pop("finished", None)
     save(b)
     prepare(job, lambda line: log(bid, label, line))
+    b = load(bid)
+    if b["residents"][name]["status"] == "stopping":   # Stop was pressed while it was being prepared
+        b["residents"][name].update(status="stopped", error="You stopped this audit.")
+        save(b)
+        return b["residents"][name]
     run = runner.Run(job, settings(), lambda line: log(bid, label, line))
     if on_run:
         on_run(run)
