@@ -320,7 +320,7 @@ function roundLine(b) {
     : `${d} of ${live.length} delivered${b.feedback === 'done' ? ', with the feedback form' : ''}`;
   return `<li><div><a class="name" href="#/round/${b.id}">${esc(b.ma || b.folder_name || 'Audit round')}</a><div class="muted">${when(b.created)}</div></div>
     <div><div class="row" style="justify-content:space-between"><span>${word}</span><span class="muted">${pct}%</span></div><div class="progress"><i style="width:${pct}%"></i></div></div>
-    <div class="row">${b.has_report ? `<a class="btn small" target="_blank" href="/api/batches/${b.id}/download-round?what=report">Report</a>` : ''}<button class="btn quiet small" onclick="openRound('${b.id}','folder')">Folder</button></div></li>`;
+    <div class="row">${busy ? `<button class="btn mark small" onclick="stopRoundId('${b.id}', this)">Stop</button>` : ''}${b.has_report ? `<a class="btn small" target="_blank" href="/api/batches/${b.id}/download-round?what=report">Report</a>` : ''}<button class="btn quiet small" onclick="openRound('${b.id}','folder')">Folder</button></div></li>`;
 }
 function formSlots(s) {
   const slot = (ok, name, kind) => `<div class="form-slot ${ok ? '' : 'missing'}"><span class="tick">${ok ? '✓' : '!'}</span>
@@ -422,7 +422,8 @@ function renderRound() {
   put('rTitle', esc(b.ma || 'Audit round'));
   put('rSub', `Started ${when(b.created)}. Saving to <code class="path">${esc(b.out_dir)}</code>`);
   put('rTrack', bigTrack(b));
-  put('rReport', (b.has_report ? `<a class="btn" target="_blank" href="/api/batches/${b.id}/download-round?what=report">Open delivered report</a>` : '')
+  const busy = Object.values(b.residents).some(r => ['running','queued','stopping'].includes(r.status)) || ['running','queued'].includes((b.feedback||{}).status);
+  put('rReport', (busy ? `<button class="btn mark" onclick="stopRound(this)">Stop this round</button>` : '') + (b.has_report ? `<a class="btn" target="_blank" href="/api/batches/${b.id}/download-round?what=report">Open delivered report</a>` : '')
     + (!Object.values(b.residents).some(r => ['running','stopping'].includes(r.status)) && b.status !== 'redacting'
        ? `<button class="btn quiet" onclick="restartRound(this)" title="Builds the round again from the files you gave it">Start again</button>` : ''));
   put('rErr', b.status === 'failed' ? `<div class="panel" style="margin-top:18px">${whyBox('This round could not be prepared', b.error || 'Something went wrong while hiding names.')}</div>` : '');
@@ -547,6 +548,18 @@ function sure(btn, ask) {
   btn.dataset.armed = '1'; btn.textContent = ask; btn.classList.add('mark');
   setTimeout(() => { delete btn.dataset.armed; btn.textContent = was; btn.classList.remove('mark') }, 5000);
   return false;
+}
+async function stopRoundId(id, btn) {
+  if (!sure(btn, 'Click again to stop')) return;
+  btn.disabled = true;
+  try { await post(`/api/batches/${id}/stop-round`); toast('Stopped. Finished forms are kept.') } catch(e) { toast(e.message) }
+  tick();
+}
+async function stopRound(btn) {
+  if (!sure(btn, 'Click again to stop everything in this round')) return;
+  btn.disabled = true; btn.textContent = 'Stopping...';
+  try { await post(`/api/batches/${D.id}/stop-round`); toast('Stopped. Finished forms are kept. Press Retry on a resident to carry on.') } catch(e) { toast(e.message) }
+  tick();
 }
 async function restartRound(btn) {
   if (!sure(btn, 'Click again to start again')) return;
