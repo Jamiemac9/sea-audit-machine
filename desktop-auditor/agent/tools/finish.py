@@ -92,9 +92,25 @@ def main(docx_path, work):
         print("LibreOffice could not render the form in 4 minutes: open the .docx in Word and look at every page yourself.")
         return
     d = fitz.open(pdf)
+    for old in out.glob("sheet-*.png"):
+        old.unlink()
+    pages = []
     for i, page in enumerate(d, 1):
-        page.get_pixmap(dpi=70).save(out / f"page-{i:02d}.png")
-    print(f"{len(d)} pages rendered to {out}. Look at every one: tables over the header, stranded headings, screenshots off the page.")
+        f = out / f"page-{i:02d}.png"
+        page.get_pixmap(dpi=70).save(f)
+        pages.append(f)
+    # contact sheets: four pages side by side per image, so the whole form is checked in a few looks
+    from PIL import Image
+    for n in range(0, len(pages), 4):
+        ims = [Image.open(f) for f in pages[n:n + 4]]
+        w, h = sum(i.width for i in ims) + 8 * (len(ims) - 1), max(i.height for i in ims)
+        sheet = Image.new("RGB", (w, h), "white")
+        x = 0
+        for im in ims:
+            sheet.paste(im, (x, 0)); x += im.width + 8
+        sheet.save(out / f"sheet-{n // 4 + 1}.png")
+    print(f"{len(d)} pages rendered to {out}: sheet-1.png onwards show four pages each. Check every sheet: "
+          "tables over the header, stranded headings, screenshots off the page.")
 
 
 if __name__ == "__main__":

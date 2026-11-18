@@ -72,9 +72,14 @@ lock = threading.Lock()
 
 # ---------- the one queue ----------
 
+PAUSE = {"until": 0.0, "why": ""}   # set when Claude's usage limit is hit; the queue waits
+
+
 def worker():
     while True:
         kind, bid, name = tasks.get()
+        while kind in ("audit", "feedback") and time.time() < PAUSE["until"]:
+            time.sleep(15)   # waiting for the usage limit to reset
         try:
             if kind == "redact":
                 b = pl.redact(bid)
@@ -146,18 +151,28 @@ def again(bid, kind, name):
             pl.save(b)
         return
     limit = "usage limit" in (item.get("error") or "").lower()
+    if limit:
+        # not this file's fault: pause the whole queue until the limit resets, and don't use up a try
+        until = item.pop("limit_until", None) or time.time() + LIMIT_WAIT
+        PAUSE["until"] = max(PAUSE["until"], until)
+        PAUSE["why"] = "Claude's usage limit was reached"
+        item["status"] = "queued"
+        item["note"] = (f"Claude's usage limit was reached. Everything waits and carries on by itself at "
+                        f"{time.strftime('%H:%M', time.localtime(PAUSE['until']))}.")
+        pl.save(b)
+        pl.log(bid, (b["residents"][name]["label"].strip("[]") if kind == "audit" else "_round"), f"--- Paused --- {item['note']}")
+        tasks.put((kind, bid, name))
+        return
     item["tries"] = item.get("tries", 1) + 1
-    if item["tries"] > (LIMIT_TRIES if limit else MAX_TRIES):
+    if item["tries"] > MAX_TRIES:
         item["tries"] -= 1
         item.pop("note", None)
         pl.save(b)
         return
-    wait = LIMIT_WAIT if limit else 20
-    at = time.strftime("%H:%M", time.localtime(time.time() + wait))
+    wait = 20
     item["status"] = "queued"
-    item["note"] = (f"Claude's usage limit was reached. Trying again at {at}, and every 20 minutes until it resets."
-                    if limit else f"The last try stopped ({(item.get('error') or 'no reason')[:160]}). "
-                                  f"Trying again: attempt {item['tries']} of {MAX_TRIES}.")
+    item["note"] = (f"The last try stopped ({(item.get('error') or 'no reason')[:160]}). "
+                    f"Trying again: attempt {item['tries']} of {MAX_TRIES}.")
     pl.save(b)
     pl.log(bid, (b["residents"][name]["label"].strip("[]") if kind == "audit" else "_round"),
            f"--- Retry --- {item['note']}")
@@ -375,6 +390,7 @@ def state():
                                       for n, r in b["residents"].items()]})
     batches.sort(key=lambda b: b["created"], reverse=True)
     return {
+        "paused_until": time.strftime("%H:%M", time.localtime(PAUSE["until"])) if time.time() < PAUSE["until"] else None,
         "template": t.name if t else None,
         "template_others": [p.name for p in pl.template_files()
                             if (not t or p != t) and p != pl.feedback_template_path()],
@@ -542,6 +558,37 @@ def _kids(root: Path):
     return [p for p in items if p.is_file()], [p for p in items if p.is_dir()]
 
 
+def find_residents(root: Path) -> list[Path]:
+    """Resident folders at any depth: a round folder can hold resident folders directly, or
+    address folders that each hold resident folders. Papers lying next to resident folders
+    (resident list, licence, certificates) are copied into each of those residents' files
+    under "Property documents", so each audit and the feedback form can see them."""
+    files, dirs = _kids(root)
+    if not looks_like_several(root):
+        return [root]
+    out = []
+    for d in sorted(dirs):
+        out += find_residents(d) if looks_like_several(d) else [d]
+    if files:
+        for g in out:
+            if g.parent == root or g.parent.parent == root:
+                shared = g / "Property documents"
+                shared.mkdir(exist_ok=True)
+                for f in files:
+                    if not (shared / f.name).exists():
+                        shutil.copy2(f, shared / f.name)
+    # two residents with the same first name at different addresses keep apart
+    seen: dict[str, int] = {}
+    for i, g in enumerate(out):
+        k = g.name.strip().lower()
+        seen[k] = seen.get(k, 0) + 1
+        if seen[k] > 1:
+            new = g.with_name(f"{g.name} ({g.parent.name})")
+            g.rename(new)
+            out[i] = new
+    return out
+
+
 def looks_like_several(root: Path) -> bool:
     """A property folder holds one folder per resident and no loose documents. A resident's
     own folder holds documents, or sub-folders named for documents (Sessions, Risk, 2026...)."""
@@ -572,15 +619,7 @@ def _batch_from_root(root: Path, several, ma: str, date: str, follow_up: bool, n
         files, dirs = _kids(root)
     if several is None:
         several = looks_like_several(root)
-    groups = (sorted(_kids(root)[1]) if several else [root])
-    if several and files:
-        # property-level papers next to the resident folders (resident list, licence, certificates)
-        # go into every resident's file, so each audit and the feedback form can see them
-        for g in groups:
-            shared = g / "Property documents"
-            shared.mkdir(exist_ok=True)
-            for f in files:
-                shutil.copy2(f, shared / f.name)
+    groups = find_residents(root) if several else [root]
     if not groups:
         raise HTTPException(400, "No resident folders found inside that folder.")
     if not any(f.is_file() for g in groups for f in g.rglob("*")):
@@ -775,14 +814,32 @@ def open_local(bid: str, label: str, folder: bool = False):
     return {"ok": True}
 
 
+def _allow_front():
+    """Windows only lets the app the person is using put a window in front. The app runs in
+    the background, so the Explorer or Word window it opens would land behind the browser.
+    A tap of the Alt key (pressed and released, nothing typed) lifts that rule for the next
+    window, so it opens in front where it can be seen."""
+    try:
+        import ctypes
+        u = ctypes.windll.user32
+        u.keybd_event(0x12, 0, 0, 0)
+        u.keybd_event(0x12, 0, 2, 0)
+        u.AllowSetForegroundWindow(-1)
+    except Exception:
+        pass
+
+
 def _open(target: Path, folder: bool):
     if not LOCAL:
         raise HTTPException(400, "Only on this computer")
     if platform.system() == "Darwin":
         subprocess.run(["open", "-R", str(target)] if folder and target.is_file() else ["open", str(target)])
     elif platform.system() == "Windows":
+        _allow_front()
         if folder and target.is_file():
-            subprocess.run(["explorer", "/select,", str(target)])
+            subprocess.Popen(["explorer", "/select,", str(target)])
+        elif target.is_dir():
+            subprocess.Popen(["explorer", str(target)])
         else:
             os.startfile(str(target))  # type: ignore[attr-defined]
     else:
@@ -821,7 +878,7 @@ def open_round(bid: str, what: str = "folder"):
     if not target.exists():
         raise HTTPException(404, "Not there yet")
     _open(target, False)
-    return {"ok": True}
+    return {"ok": True, "path": str(target)}
 
 
 @app.get("/api/batches/{bid}/download-round")
