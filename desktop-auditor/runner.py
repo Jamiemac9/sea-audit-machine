@@ -22,7 +22,7 @@ AGENT_DIR = APP_DIR / "agent"
 HOME = Path(os.environ.get("SA_HOME") or (Path.home() / "SupportAudit")).expanduser()
 SETTINGS = HOME / "settings.json"
 TOOLS_ALLOWED = "Bash,Read,Write,Edit,MultiEdit,Glob,Grep,Skill,TodoWrite"
-TOOLS_BLOCKED = "WebFetch,WebSearch"
+TOOLS_BLOCKED = "WebFetch,WebSearch,Task,Agent"   # no web; no extra parallel Claude sessions
 
 
 # ---------- settings ----------
@@ -135,6 +135,22 @@ def check_job(job: dict, claude: str | None) -> list[str]:
 RUNNING = HOME / "running.json"
 
 
+def reset_time(text: str):
+    """'You've hit your 5-hour limit · resets 10:40am (Europe/London)' -> epoch seconds of the
+    next 10:40 local time (plus two minutes), or None when no time is given."""
+    m = re.search(r"(?i)resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", text)
+    if not m:
+        return None
+    h, mi = int(m.group(1)), int(m.group(2) or 0)
+    if m.group(3):
+        h = h % 12 + (12 if m.group(3).lower() == "pm" else 0)
+    now = time.localtime()
+    t = time.mktime((now.tm_year, now.tm_mon, now.tm_mday, h, mi, 0, 0, 0, -1))
+    if t <= time.time():
+        t += 86400
+    return t + 120
+
+
 def _pids() -> list[int]:
     try:
         return json.loads(RUNNING.read_text())
@@ -201,6 +217,7 @@ class Run:
         self.ok = False
         self.error = ""          # plain reason when the run ends without a form
         self.last_output = time.time()
+        self.limit_until = None  # set when Claude's usage limit stops the run
         self.plain = []          # lines that were not Claude's messages (errors, tracebacks)
 
     def command(self, claude: str, runtime: Path) -> list[str]:
@@ -295,8 +312,9 @@ class Run:
             self.result_text = msg.get("result") or ""
             if msg.get("is_error"):
                 self.error = self.result_text or "Claude Code reported an error"
-                if re.search(r"(?i)usage limit|rate limit|limit reached|overloaded", self.error):
-                    self.error = "Your Claude usage limit was reached. Wait for it to reset, then press Retry. (" + self.error[:200] + ")"
+                if re.search(r"(?i)usage limit|rate limit|limit reached|hit your .{0,20}limit|\d+-hour limit|weekly limit|overloaded", self.error):
+                    self.limit_until = reset_time(self.error)
+                    self.error = "Your Claude usage limit was reached. The app waits for it to reset and carries on by itself. (" + self.error[:200] + ")"
                 self.on_line("! " + self.error)
                 if re.search(r"(?i)auth|log ?in|credential", self.result_text):
                     self.on_line("! Open Terminal (Mac) or Command Prompt (Windows), type  claude  and "

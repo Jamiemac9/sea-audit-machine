@@ -278,6 +278,7 @@ const scoreBar = r => r.total != null ? `<div class="score"><div class="bar"><i 
 function needs(s) {
   const out = [];
   if (s.login.loggedIn === false) out.push({t:'Log Claude in on this computer', a:`<button class="btn small" onclick="claudeLogin()">Log in to Claude</button>`});
+  if (s.paused_until) out.push({t:`Claude's usage limit was reached. Audits are paused and carry on by themselves at ${esc(s.paused_until)}.`, a:''});
   if (!s.template) out.push({t:'Add the blank Support Audit form (once)', a:`<button class="btn quiet small" onclick="templateFile.click()">Add it</button>`});
   for (const b of s.batches) {
     const name = b.ma || b.folder_name || 'Audit round';
@@ -391,7 +392,13 @@ async function send(list) {
   } catch(err) { toast(err.message) }
   finally { d.classList.remove('busy'); $('dropTitle').textContent = 'Drop a folder here'; $('dropSub').textContent = 'or click to choose one'; tick() }
 }
-async function openRound(id, what) { try { await post(`/api/batches/${id}/open-round?what=${what}`) } catch(e) { toast(e.message) } }
+async function openRound(id, what) {
+  try {
+    const r = await post(`/api/batches/${id}/open-round?what=${what}`);
+    toast(`Opened in ${what === 'folder' ? 'File Explorer' : 'its own app'}: ${r.path}. If you can't see it, it's on the taskbar.`);
+    try { await navigator.clipboard.writeText(r.path) } catch(e) {}
+  } catch(e) { toast(e.message) }
+}
 
 // ---------- one round ----------
 function renderRound() {
@@ -532,7 +539,7 @@ async function approve() { try { const r = await post(`/api/batches/${D.id}/appr
 async function act(a, L) { try { await post(`/api/batches/${D.id}/${a}/${L}`); toast(a === 'stop' ? 'Stopping.' : 'Running it again.') } catch(e) { toast(e.message) } tick() }
 async function fbAct(a) { try { await post(`/api/batches/${D.id}/feedback/${a}`); toast(a === 'stop' ? 'Stopping.' : 'Writing the Overall Feedback Form.') } catch(e) { toast(e.message) } tick() }
 async function openLocal(L, folder) { try { await post(`/api/batches/${D.id}/open/${L}?folder=${folder}`) } catch(e) { toast(e.message) } }
-async function openOut(what) { try { await post(`/api/batches/${D.id}/open-round?what=${what}`) } catch(e) { toast(e.message) } }
+async function openOut(what) { await openRound(D.id, what) }
 // Ask on the page itself: pop-up confirm boxes don't show in every browser panel
 function sure(btn, ask) {
   if (btn.dataset.armed) return true;

@@ -20,6 +20,8 @@ import datetime as dt
 import json
 import re
 import shutil
+import sys
+import subprocess
 import time
 import uuid
 from pathlib import Path
@@ -281,6 +283,45 @@ def approve(bid: str, labels: list[str] | None = None) -> list[str]:
     return queued
 
 
+TOOLS = Path(__file__).parent / "agent" / "tools"
+
+
+def _tool(args: list, timeout: int = 900) -> bool:
+    try:
+        r = subprocess.run([sys.executable, *map(str, args)], capture_output=True, text=True,
+                           timeout=timeout, **runner.NO_WINDOW)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def prepare(job: dict, say=print):
+    """The mechanical groundwork, done here before Claude starts, so none of Claude's usage
+    goes on it: the resident's reading pack, the round's shared-text summary, the form map,
+    and a short house-style sample from the completed reference audits."""
+    work = Path(job["work"])
+    say("  > Preparing the file on this computer")
+    _tool([TOOLS / "read_pack.py", job["folder"], work / "pack"])
+    _tool([TOOLS / "read_pack.py", job["round"], work / "round", "--text-only"])
+    if job.get("template"):
+        _tool([TOOLS / "inspect_template.py", job["template"], work / "template-map.md"], 300)
+    ref = Path(job.get("reference") or "")
+    if ref.is_dir():
+        cache = HOME / "reference_pack"
+        stamp = str(sorted((p.name, p.stat().st_mtime) for p in ref.rglob("*") if p.is_file()))
+        if not (cache / "stamp.txt").exists() or (cache / "stamp.txt").read_text(encoding="utf-8") != stamp:
+            shutil.rmtree(cache, ignore_errors=True)
+            _tool([TOOLS / "read_pack.py", ref, cache, "--text-only"])
+            texts = sorted((cache / "text").glob("*.txt"), key=lambda p: -p.stat().st_size) if (cache / "text").exists() else []
+            words = texts[0].read_text(encoding="utf-8", errors="ignore").split() if texts else []
+            (cache / "style-excerpt.md").parent.mkdir(parents=True, exist_ok=True)
+            (cache / "style-excerpt.md").write_text(
+                "# House style excerpt (from a completed audit, redacted)\n\n" + " ".join(words[:2500]), encoding="utf-8")
+            (cache / "stamp.txt").write_text(stamp, encoding="utf-8")
+        if cache.exists():
+            shutil.copytree(cache, work / "reference", dirs_exist_ok=True)
+
+
 def run_resident(bid: str, name: str, on_run=None) -> dict:
     """Claude audits one redacted file; then the real details go back in, on this computer."""
     b = load(bid)
@@ -307,6 +348,7 @@ def run_resident(bid: str, name: str, on_run=None) -> dict:
     r.pop("error", None)
     r.pop("finished", None)
     save(b)
+    prepare(job, lambda line: log(bid, label, line))
     run = runner.Run(job, settings(), lambda line: log(bid, label, line))
     if on_run:
         on_run(run)
@@ -327,6 +369,7 @@ def run_resident(bid: str, name: str, on_run=None) -> dict:
     if not ok:
         r["status"] = "failed"
         r["error"] = _readable(bid, run.error or "Claude stopped without saving the form.")
+        r["limit_until"] = getattr(run, "limit_until", None)
         save(b)
         return r
     # ---- redaction out: on this computer only ----

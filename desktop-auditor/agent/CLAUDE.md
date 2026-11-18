@@ -44,56 +44,72 @@ audits. Where the skill and a reference file disagree, the skill wins.
 
 ## Order of work
 
+Work efficiently: every step you take re-reads everything before it, so batch shell commands
+into one call where you can, do not re-read a file you have already read, and do not read
+the tools' source code (everything you need about them is below). Audit this one resident
+only. Never start other agents, forks or parallel sessions; other residents in the round
+are audited in their own runs.
+
 1. **Load the skill** `sea-support-audit`.
-2. **Read the reference folder in full.** Every file in it, including the completed audits.
-   The completed Form A documents are the model: match their tone, wording, structure and
-   sentence depth precisely, not approximately. For .docx and .pdf files there, run
-   `"{{PY}}" "{{TOOLS}}/read_pack.py" "{{REFERENCE}}" "{{WORK}}/reference"` and read the
-   text files it writes.
-3. **Read the resident's file mechanically:**
-   `"{{PY}}" "{{TOOLS}}/read_pack.py" "{{RESIDENT}}" "{{WORK}}/pack"`.
-   Scanned pages were already read on this computer: their text (names swapped for labels) is
-   in the text files. Do not run Tesseract or any OCR yourself, and do not install anything.
-   Start with `pack/summary.md` for the list of documents and the leads it found. Then
-   **read every document itself with the Read tool, the way a chat reads an attachment**: open
-   each PDF in `{{RESIDENT}}` directly (for a PDF over 10 pages, read it in blocks with the
-   `pages` option, for example "1-10", "11-20", until the end), and each .docx, .txt or image
-   too. Read every page, not just some: ticks, signatures, handwriting, blank boxes and dates
-   are judged from the page itself. `pack/pages/` holds small two-page previews, useful only to
-   find a page quickly; never judge from them. The summary's lists of
-   reused images, repeated sentences and impossible risk scores are leads to check against
-   the documents, not findings in themselves. For copying between residents, also run it on
-   the round: `"{{PY}}" "{{TOOLS}}/read_pack.py" "{{ROUND}}" "{{WORK}}/round" --text-only` and read
-   `round/summary.md` only. Do not open other residents' page images: it fills the session
-   and their files are audited separately.
+2. **House style:** read `{{WORK}}/reference/style-excerpt.md` (an excerpt of a completed
+   audit). Match its tone, wording, structure and sentence depth. Only if one section's
+   style is still unclear, look in `{{WORK}}/reference/text/` for that section alone.
+3. **The resident's file.** The app has already prepared `{{WORK}}/pack/` on this computer.
+   Scanned pages were read here too: their text (names swapped for labels) is in the PDFs
+   and in `pack/text/`. Do not run OCR, render pages yourself, or install anything.
+   Read `pack/summary.md` for the document list and leads. Then **read every document
+   itself with the Read tool, the way a chat reads an attachment**: each PDF in
+   `{{RESIDENT}}` (over 10 pages: in blocks with the `pages` option, "1-10", "11-20"...), each
+   .docx, .txt or image. Read every page, not just some: ticks, signatures, handwriting, blank
+   boxes and dates are judged from the page itself. The summary's leads (reused images,
+   repeated sentences, impossible risk scores) are things to check, not findings.
+   For copying between residents, `{{WORK}}/round/summary.md` lists text shared across the
+   round: search it for `{{LABEL}}` rather than reading it whole.
 4. **Work through "How to read the file" in the skill** for every session and every
-   comparison it lists. Nothing is skipped because the tool did part of it.
-5. **Map the form:** `"{{PY}}" "{{TOOLS}}/inspect_template.py" "{{TEMPLATE}}" "{{WORK}}/template-map.md"`.
+   comparison it lists.
+5. **The form map** is ready at `{{WORK}}/template-map.md` (table and cell indexes).
 6. **Write the words first** into `{{WORK}}/content.md`, section by section in the form's
    order. Before going on, check it against the skill: the support/documentation split, no
    dates in What support has been given / Strengths / Next Steps, no paperwork as a strength,
    documentation actions only in General Notes, General Notes headings in the skill's order,
    no em dashes in our prose, UK English.
-7. **Cut the screenshots** with `"{{PY}}" "{{TOOLS}}/crop.py"` into `{{WORK}}/shots/`.
-   Plain crops only.
-8. **Fill the form** by writing `{{WORK}}/fill.py`, which imports `formkit` from the tools
-   folder (read the top of `formkit.py` for how). Use `fill()` to write into the template's
-   own blank lines, `choose()` for every YES/NO/N/A, the `*_after()` helpers for everything
-   added (they clone the template's own paragraph formatting), and `unfloat()` only for
-   the tables that grow with content (Support Delivered and General Notes) plus any other
-   you see overlapping the header in the check pages. Do not restyle, retype or
-   rebuild anything the template already has: headers, footers, labels, centred underlined
-   sub-headings. Run it.
-9. **Score it** with the Audit Scoring Framework (in the skill under "Rating the file"):
-   write `{{WORK}}/score.json` in the shape shown at the top of `{{TOOLS}}/score.py`, a
-   score of 0 to 3 for each of the eight criteria with a one or two sentence reason naming
-   the document and date, the three gates with reasons, and an override only if the band
-   it gives is clearly wrong (with the reason). Run
-   `"{{PY}}" "{{TOOLS}}/score.py" "{{WORK}}/score.json"`. The final band it prints is the
-   rating. Also write `{{WORK}}/content.md` so it is complete: the Overall Feedback Form is
-   written from it later.
-10. **Check it:** `"{{PY}}" "{{TOOLS}}/finish.py" "{{OUTPUT}}" "{{WORK}}"`, then look at
-   every page image in `{{WORK}}/check/`. Fix and re-run until every page is right.
+7. **Cut the screenshots** into `{{WORK}}/shots/` (plain crops, 130 dpi):
+   - `"{{PY}}" "{{TOOLS}}/crop.py" find <file.pdf> <page> "<text on the page>" <out.png> [--above 40] [--below 120]`
+   - `"{{PY}}" "{{TOOLS}}/crop.py" rect <file.pdf> <page> x0 y0 x1 y1 <out.png>` (PDF points)
+   - `"{{PY}}" "{{TOOLS}}/crop.py" join <a.png> <b.png> <out.png> [--side]` for comparisons
+   Pages count from 1. Look at each crop once to confirm it shows what the caption says.
+8. **Fill the form** with one script, `{{WORK}}/fill.py`:
+   ```python
+   import sys; sys.path.insert(0, r"{{TOOLS}}")
+   from formkit import *
+   doc = open_form(r"{{TEMPLATE}}")
+   t = doc.tables[3]                                   # indexes from template-map.md
+   choose(t.cell(2, 1), "NO")                          # YES / NO / N/A, highlighted in place
+   fill(t.cell(0, 1), "[ADDRESS_1]")                   # into the cell's own blank line
+   p = heading_after(par, "Support with Accessing Healthcare:")   # bold; underline=True for General Notes headings
+   p = text_after(p, "Supported to register with the GP ...")
+   p = rich_after(p, [("Bold part: ", {"bold": True}), ("plain part", {})])
+   p = bullets_after(p, ["item", ("Title", "detail")]) # dash bullets; a pair is 'Title: detail'
+   p = screenshot_after(p, r"{{WORK}}/shots/01.png", "WR-13 dated 07/09/26 repeats 31/08/26")
+   p = placeholder_after(p, "File > Properties on WR-11: show the Created date")
+   clear_cell(cell); delete_par(par)                   # only where a template line must go
+   find_cells(doc, "Goal")                             # -> [(table, row, col, cell), ...]
+   unfloat(doc, [i, j])                                # only the tables that grow (Support Delivered, General Notes)
+   save(doc, r"{{OUTPUT}}")
+   ```
+   `par` is any paragraph, e.g. `cell.paragraphs[-1]`. Do not restyle, retype or rebuild
+   anything the template already has (headers, footers, labels, centred underlined
+   sub-headings). Run it.
+9. **Score it** with the Audit Scoring Framework (the skill, "Rating the file"): write
+   `{{WORK}}/score.json` as
+   `{"criteria": {"1": {"score": 2, "reason": "..."}, ... "8": {...}}, "red_gate": {"value": false, "reason": ""}, "critical_doc_missing": {"value": false, "reason": ""}, "critical_doc_inaccurate": {"value": false, "reason": ""}, "override": null}`
+   (scores 0 to 3, each reason one or two sentences naming the document and date; an
+   override `{"band": "...", "reason": "..."}` only if the band is clearly wrong). Run
+   `"{{PY}}" "{{TOOLS}}/score.py" "{{WORK}}/score.json"`: the band it prints is the rating.
+   Make sure `content.md` is complete: the Overall Feedback Form is written from it.
+10. **Check it:** `"{{PY}}" "{{TOOLS}}/finish.py" "{{OUTPUT}}" "{{WORK}}"` writes page images to
+    `{{WORK}}/check/` and `{{WORK}}/check/sheet-*.png` (several pages per image). Look at the
+    sheets; open a single page only where something looks wrong. Fix and re-run until right.
 11. **Finish** with the reply described below, and write the same text to
     `{{WORK}}/result.md`.
 
